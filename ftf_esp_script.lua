@@ -1,8 +1,12 @@
--- FTF ESP Script — ajustes: search vazio + Teleport como categoria dinâmica
--- - SearchBox sem texto/placeholder por padrão
--- - Aba "Teleport" adicionada com lista de todos os jogadores (atualiza automaticamente)
--- - Quick button renomeado para "Teleport" (mantido, abre a janela de Teleport externa)
--- Mantive a lógica do ESP / Textures / Timers já existente
+-- FTF ESP Script — ajustes solicitados
+-- Alterações principais:
+--  - Removei o botão rápido "Teleport" ao lado da search (conforme pedido).
+--  - Removi a janela externa de Teleport (agora Teleport é apenas uma aba no menu, ajustada para caber).
+--  - Adicionei "Snow texture" na aba Textures como toggle (ativa/desativa).
+--     - Ao ativar: altera BaseParts e Lighting como no script que você forneceu; salva backups.
+--     - Ao desativar: restaura propriedades salvas e restaura Skies removidos.
+--  - A lista de Teleport (aba Teleport) já é dinâmica e atualiza quando alguém entra/sai.
+--  - Garantia: nada do Teleport ficará maior que o menu — tudo dentro da aba.
 
 -- Services
 local UIS = game:GetService("UserInputService")
@@ -10,6 +14,7 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
+local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
@@ -27,7 +32,8 @@ pcall(function() GUI.Parent = CoreGui end)
 if not GUI.Parent or GUI.Parent ~= CoreGui then GUI.Parent = PlayerGui end
 
 -- =====================================================================
--- (Kept logic: ESPs, Textures, Timers) - unchanged core implementations
+-- CORE LOGIC (ESP, Computers, Doors, Freeze Pods, Timers, Texture)
+-- (kept similar to previous version)
 -- =====================================================================
 
 -- PLAYER ESP
@@ -127,7 +133,7 @@ Workspace.DescendantAdded:Connect(function(obj) if ComputerESPActive and isCompu
 Workspace.DescendantRemoving:Connect(RemoveComputerHighlight)
 RunService.RenderStepped:Connect(function() if ComputerESPActive then for m,h in pairs(compHighlights) do if m and m.Parent and h and h.Parent then h.FillColor = getPcColor(m) end end end end)
 
--- DOORS (SelectionBox)
+-- DOOR ESP
 local DoorESPActive = false
 local doorHighlights = {}
 local doorDescendantAddConn, doorDescendantRemConn = nil, nil
@@ -289,7 +295,7 @@ end
 Players.PlayerAdded:Connect(function(p) attachRagdollListenerToPlayer(p); p.CharacterAdded:Connect(function() wait(0.06); if ragdollBillboards[p] then removeRagdollBillboard(p); createRagdollBillboardFor(p) end end) end)
 for _,p in pairs(Players:GetPlayers()) do attachRagdollListenerToPlayer(p) end
 
--- GRAY SKIN
+-- GRAY SKIN (Remove players Textures)
 local GraySkinActive = false
 local skinBackup = {}
 local grayConns = {}
@@ -346,7 +352,7 @@ local function disableGraySkin()
 end
 Players.PlayerRemoving:Connect(function(p) if skinBackup[p] then restoreGrayForPlayer(p); skinBackup[p]=nil end; if grayConns[p] then pcall(function() grayConns[p]:Disconnect() end); grayConns[p]=nil end end)
 
--- TEXTURE
+-- WHITE BRICK TEXTURE (existing)
 local TextureActive = false
 local textureBackup = {}
 local textureDescendantConn = nil
@@ -412,9 +418,139 @@ local function disableTextureToggle()
 end
 
 -- =====================================================================
--- UI: organized menu like LemonHub example
--- - SearchBox set to blank (no "TextBox" or placeholder)
--- - Added Teleport tab which lists all players and updates automatically
+-- SNOW TEXTURE (new)
+-- - runs the provided code, but saves backups so it can be toggled off
+-- =====================================================================
+local SnowActive = false
+local snowBackupParts = {}      -- [part] = {Color, Material}
+local snowPartConn = nil
+local snowLightingBackup = nil  -- table of lighting properties
+local snowSkyBackup = {}        -- original Sky instances (clones saved)
+local createdSnowSky = nil
+
+local function backupLighting()
+    local ok, amb = pcall(function() return Lighting.Ambient end)
+    local ok2, outAmb = pcall(function() return Lighting.OutdoorAmbient end)
+    local ok3, fogc = pcall(function() return Lighting.FogColor end)
+    local ok4, foge = pcall(function() return Lighting.FogEnd end)
+    local ok5, bright = pcall(function() return Lighting.Brightness end)
+    local ok6, clock = pcall(function() return Lighting.ClockTime end)
+    local ok7, envDiff = pcall(function() return Lighting.EnvironmentDiffuseScale end)
+    local ok8, envSpec = pcall(function() return Lighting.EnvironmentSpecularScale end)
+    snowLightingBackup = {
+        Ambient = (ok and amb) or nil,
+        OutdoorAmbient = (ok2 and outAmb) or nil,
+        FogColor = (ok3 and fogc) or nil,
+        FogEnd = (ok4 and foge) or nil,
+        Brightness = (ok5 and bright) or nil,
+        ClockTime = (ok6 and clock) or nil,
+        EnvironmentDiffuseScale = (ok7 and envDiff) or nil,
+        EnvironmentSpecularScale = (ok8 and envSpec) or nil,
+    }
+end
+
+local function restoreLighting()
+    if not snowLightingBackup then return end
+    pcall(function() if snowLightingBackup.Ambient then Lighting.Ambient = snowLightingBackup.Ambient end end)
+    pcall(function() if snowLightingBackup.OutdoorAmbient then Lighting.OutdoorAmbient = snowLightingBackup.OutdoorAmbient end end)
+    pcall(function() if snowLightingBackup.FogColor then Lighting.FogColor = snowLightingBackup.FogColor end end)
+    pcall(function() if snowLightingBackup.FogEnd then Lighting.FogEnd = snowLightingBackup.FogEnd end end)
+    pcall(function() if snowLightingBackup.Brightness then Lighting.Brightness = snowLightingBackup.Brightness end end)
+    pcall(function() if snowLightingBackup.ClockTime then Lighting.ClockTime = snowLightingBackup.ClockTime end end)
+    pcall(function() if snowLightingBackup.EnvironmentDiffuseScale then Lighting.EnvironmentDiffuseScale = snowLightingBackup.EnvironmentDiffuseScale end end)
+    pcall(function() if snowLightingBackup.EnvironmentSpecularScale then Lighting.EnvironmentSpecularScale = snowLightingBackup.EnvironmentSpecularScale end end)
+    snowLightingBackup = nil
+end
+
+local function enableSnowTexture()
+    if SnowActive then return end
+    SnowActive = true
+    -- backup lighting
+    backupLighting()
+    -- backup existing Sky instances (clone them)
+    for _,v in pairs(Lighting:GetChildren()) do
+        if v:IsA("Sky") then
+            pcall(function() table.insert(snowSkyBackup, v:Clone()) end)
+            pcall(function() v:Destroy() end)
+        end
+    end
+    -- apply to all existing BaseParts
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local okC, col = pcall(function() return obj.Color end)
+            local okM, mat = pcall(function() return obj.Material end)
+            if not snowBackupParts[obj] then
+                snowBackupParts[obj] = { Color = (okC and col) or nil, Material = (okM and mat) or nil }
+            end
+            pcall(function() obj.Color = Color3.new(1,1,1); obj.Material = Enum.Material.SmoothPlastic end)
+        end
+    end
+    -- adjust lighting
+    pcall(function()
+        Lighting.Ambient = Color3.new(1,1,1)
+        Lighting.OutdoorAmbient = Color3.new(1,1,1)
+        Lighting.FogColor = Color3.new(1,1,1)
+        Lighting.FogEnd = 100000
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 12
+        Lighting.EnvironmentDiffuseScale = 1
+        Lighting.EnvironmentSpecularScale = 1
+    end)
+    -- create an empty sky like your script
+    local sky = Instance.new("Sky")
+    sky.SkyboxBk = ""
+    sky.SkyboxDn = ""
+    sky.SkyboxFt = ""
+    sky.SkyboxLf = ""
+    sky.SkyboxRt = ""
+    sky.SkyboxUp = ""
+    sky.Parent = Lighting
+    createdSnowSky = sky
+    -- connect to future added parts to apply snow (and backup their original props)
+    snowPartConn = Workspace.DescendantAdded:Connect(function(desc)
+        if not SnowActive then return end
+        if desc and desc:IsA("BasePart") then
+            if not snowBackupParts[desc] then
+                local okC, col = pcall(function() return desc.Color end)
+                local okM, mat = pcall(function() return desc.Material end)
+                snowBackupParts[desc] = { Color = (okC and col) or nil, Material = (okM and mat) or nil }
+            end
+            pcall(function() desc.Color = Color3.new(1,1,1); desc.Material = Enum.Material.SmoothPlastic end)
+        end
+    end)
+end
+
+local function disableSnowTexture()
+    if not SnowActive then return end
+    SnowActive = false
+    -- disconnect descendants connection
+    if snowPartConn then pcall(function() snowPartConn:Disconnect() end); snowPartConn = nil end
+    -- restore parts
+    for part, props in pairs(snowBackupParts) do
+        if part and part.Parent then
+            pcall(function()
+                if props.Material then part.Material = props.Material end
+                if props.Color then part.Color = props.Color end
+            end)
+        end
+    end
+    snowBackupParts = {}
+    -- remove created snow sky
+    if createdSnowSky and createdSnowSky.Parent then pcall(function() createdSnowSky:Destroy() end) end
+    createdSnowSky = nil
+    -- restore previous skies
+    for _,cloneSky in ipairs(snowSkyBackup) do
+        if cloneSky then
+            pcall(function() cloneSky.Parent = Lighting end)
+        end
+    end
+    snowSkyBackup = {}
+    -- restore lighting
+    restoreLighting()
+end
+
+-- =====================================================================
+-- UI: organized menu (Lemon-like). Teleport tab lives inside the menu.
 -- =====================================================================
 
 local MENU_WIDTH = 420
@@ -445,14 +581,14 @@ TitleLbl.Position = UDim2.new(0,12,0,12)
 TitleLbl.Size = UDim2.new(0,220,0,24)
 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
--- Search box (now blank by default)
+-- Search box (blank placeholder)
 local SearchBox = Instance.new("TextBox", TitleBar)
 SearchBox.Size = UDim2.new(0, 180, 0, 28)
 SearchBox.Position = UDim2.new(1, -188, 0, 10)
 SearchBox.BackgroundColor3 = Color3.fromRGB(26,26,26)
 SearchBox.TextColor3 = Color3.fromRGB(200,200,200)
-SearchBox.PlaceholderText = "" -- empty placeholder
-SearchBox.Text = "" -- ensure no default text
+SearchBox.PlaceholderText = "" -- blank
+SearchBox.Text = ""
 SearchBox.ClearTextOnFocus = true
 local sbCorner = Instance.new("UICorner", SearchBox); sbCorner.CornerRadius = UDim.new(0,8)
 local sbPadding = Instance.new("UIPadding", SearchBox); sbPadding.PaddingLeft = UDim.new(0,10)
@@ -464,7 +600,7 @@ CloseBtn.BackgroundTransparency = 1; CloseBtn.Size = UDim2.new(0,36,0,36); Close
 CloseBtn.TextColor3 = Color3.fromRGB(200,200,200)
 CloseBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false end)
 
--- Tabs (pills) - added "Teleport" tab
+-- Tabs (pills)
 local TabsParent = Instance.new("Frame", MainFrame)
 TabsParent.Size = UDim2.new(1, -24, 0, 44)
 TabsParent.Position = UDim2.new(0,12,0,56)
@@ -506,7 +642,7 @@ contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ContentScroll.CanvasSize = UDim2.new(0,0,0, contentLayout.AbsoluteContentSize.Y + 18)
 end)
 
--- toggle item creator (label + switch)
+-- Toggle item creator
 local function createToggleItem(parent, labelText, initial, callback)
     local item = Instance.new("Frame", parent)
     item.Size = UDim2.new(0.95, 0, 0, 44)
@@ -561,7 +697,7 @@ local function createToggleItem(parent, labelText, initial, callback)
     return item, function(newState) updateVisual(newState) end, function() return state end, lbl
 end
 
--- button item creator (label + action button on right) — used for Teleport list
+-- Button item (for teleport entries)
 local function createButtonItem(parent, labelText, buttonText, callback)
     local item = Instance.new("Frame", parent)
     item.Size = UDim2.new(0.95, 0, 0, 44)
@@ -597,7 +733,7 @@ local function createButtonItem(parent, labelText, buttonText, callback)
     return item, lbl, btn
 end
 
--- Categories mapping for toggles (labels and handlers)
+-- Categories mapping
 local Categories = {
     ["ESP"] = {
         { label = "ESP Players",      get = function() return PlayerESPActive end,    toggle = function(_) PlayerESPActive = not PlayerESPActive; RefreshPlayerESP(); end },
@@ -608,13 +744,14 @@ local Categories = {
     ["Textures"] = {
         { label = "Remove players Textures", get = function() return GraySkinActive end, toggle = function(_) GraySkinActive = not GraySkinActive; if GraySkinActive then enableGraySkin() else disableGraySkin() end end },
         { label = "Ativar Textures Tijolos Brancos", get = function() return TextureActive end, toggle = function(_) if not TextureActive then enableTextureToggle() else disableTextureToggle() end end },
+        { label = "Snow texture", get = function() return SnowActive end, toggle = function(_) if not SnowActive then enableSnowTexture() else disableSnowTexture() end end },
     },
     ["Timers"] = {
         { label = "Ativar Contador de Down", get = function() return DownTimerActive end, toggle = function(_) DownTimerActive = not DownTimerActive; if not DownTimerActive then for p,_ in pairs(ragdollBillboards) do if ragdollBillboards[p] then removeRagdollBillboard(p) end end; for p,_ in pairs(bottomUI) do if bottomUI[p] and bottomUI[p].screenGui and bottomUI[p].screenGui.Parent then bottomUI[p].screenGui:Destroy() end bottomUI[p]=nil end else for _,p in pairs(Players:GetPlayers()) do local ok, temp = pcall(function() return p:FindFirstChild("TempPlayerStatsModule") end); if ok and temp then local rag = temp:FindFirstChild("Ragdoll"); if rag and rag.Value then attachRagdollListenerToPlayer(p); end end end end end },
     },
 }
 
--- Build content for a category (supports Teleport special case)
+-- Build content
 local currentCategory = "ESP"
 local function clearContent()
     for _,v in pairs(ContentScroll:GetChildren()) do
@@ -626,10 +763,9 @@ local function buildCategory(name, filter)
     filter = (filter or ""):lower()
     clearContent()
     if name == "Teleport" then
-        -- build player list (excluding local player)
         local order = 1
         local players = Players:GetPlayers()
-        table.sort(players, function(a,b) return (a.DisplayName:lower()..a.Name:lower()) < (b.DisplayName:lower()..b.Name:lower()) end)
+        table.sort(players, function(a,b) return ( (a.DisplayName or ""):lower()..a.Name:lower()) < ((b.DisplayName or ""):lower()..b.Name:lower()) end)
         for _,pl in ipairs(players) do
             if pl ~= LocalPlayer then
                 local display = (pl.DisplayName or pl.Name) .. " (" .. pl.Name .. ")"
@@ -655,7 +791,7 @@ local function buildCategory(name, filter)
             if filter == "" or entry.label:lower():find(filter) then
                 local state = false
                 pcall(function() state = entry.get() end)
-                local item, setVisual, getState, lbl = createToggleItem(ContentScroll, entry.label, state, function(oldState)
+                local item, setVisual = createToggleItem(ContentScroll, entry.label, state, function(oldState)
                     pcall(function() entry.toggle(oldState) end)
                     local newState = nil
                     pcall(function() newState = entry.get() end)
@@ -668,7 +804,7 @@ local function buildCategory(name, filter)
     end
 end
 
--- Tabs click handlers (visual feedback + build)
+-- Tab visuals and handlers
 local function setActiveTabVisual(activeTab)
     TabESP.BackgroundColor3 = (activeTab == TabESP) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
     TabTextures.BackgroundColor3 = (activeTab == TabTextures) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
@@ -676,33 +812,17 @@ local function setActiveTabVisual(activeTab)
     TabTeleport.BackgroundColor3 = (activeTab == TabTeleport) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
 end
 
-TabESP.MouseButton1Click:Connect(function()
-    currentCategory = "ESP"
-    setActiveTabVisual(TabESP)
-    buildCategory("ESP", SearchBox.Text)
-end)
-TabTextures.MouseButton1Click:Connect(function()
-    currentCategory = "Textures"
-    setActiveTabVisual(TabTextures)
-    buildCategory("Textures", SearchBox.Text)
-end)
-TabTimers.MouseButton1Click:Connect(function()
-    currentCategory = "Timers"
-    setActiveTabVisual(TabTimers)
-    buildCategory("Timers", SearchBox.Text)
-end)
-TabTeleport.MouseButton1Click:Connect(function()
-    currentCategory = "Teleport"
-    setActiveTabVisual(TabTeleport)
-    buildCategory("Teleport", SearchBox.Text)
-end)
+TabESP.MouseButton1Click:Connect(function() currentCategory = "ESP"; setActiveTabVisual(TabESP); buildCategory("ESP", SearchBox.Text) end)
+TabTextures.MouseButton1Click:Connect(function() currentCategory = "Textures"; setActiveTabVisual(TabTextures); buildCategory("Textures", SearchBox.Text) end)
+TabTimers.MouseButton1Click:Connect(function() currentCategory = "Timers"; setActiveTabVisual(TabTimers); buildCategory("Timers", SearchBox.Text) end)
+TabTeleport.MouseButton1Click:Connect(function() currentCategory = "Teleport"; setActiveTabVisual(TabTeleport); buildCategory("Teleport", SearchBox.Text) end)
 
--- Search behavior (filters current tab content)
+-- Search behavior (filters current tab)
 SearchBox:GetPropertyChangedSignal("Text"):Connect(function()
     buildCategory(currentCategory, SearchBox.Text)
 end)
 
--- Ensure Teleport tab updates when players join/leave (auto rebuild if Teleport active)
+-- Ensure Teleport tab updates when players join/leave
 Players.PlayerAdded:Connect(function()
     if currentCategory == "Teleport" then task.delay(0.06, function() buildCategory("Teleport", SearchBox.Text) end) end
 end)
@@ -710,11 +830,11 @@ Players.PlayerRemoving:Connect(function()
     if currentCategory == "Teleport" then task.delay(0.06, function() buildCategory("Teleport", SearchBox.Text) end) end
 end)
 
--- initial view
+-- initial build
 setActiveTabVisual(TabESP)
 buildCategory("ESP", "")
 
--- draggable main frame
+-- draggable
 local dragging, dragStart, startPos = false, nil, nil
 MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -729,77 +849,17 @@ MainFrame.InputChanged:Connect(function(input)
     end
 end)
 
--- Toggle opening with K
+-- toggle opening with K
 local menuOpen = false
 UIS.InputBegan:Connect(function(input, gpe) if not gpe and input.KeyCode == Enum.KeyCode.K then menuOpen = not menuOpen; MainFrame.Visible = menuOpen end end)
 
--- TELEPORT quick button (renamed to "Teleport")
-local TeleportQuickBtn = Instance.new("TextButton", TitleBar)
-TeleportQuickBtn.Size = UDim2.new(0, 64, 0, 28)
-TeleportQuickBtn.Position = UDim2.new(1, -260, 0, 10)
-TeleportQuickBtn.BackgroundColor3 = Color3.fromRGB(38,38,38)
-TeleportQuickBtn.Text = "Teleport"
-TeleportQuickBtn.Font = Enum.Font.GothamBold
-TeleportQuickBtn.TextColor3 = Color3.fromRGB(220,220,220)
-local tpCorner = Instance.new("UICorner", TeleportQuickBtn); tpCorner.CornerRadius = UDim.new(0,6)
-TeleportQuickBtn.MouseButton1Click:Connect(function()
-    -- open Teleport tab in main menu (preferred) or toggle external window if you keep it
-    currentCategory = "Teleport"
-    setActiveTabVisual(TabTeleport)
-    MainFrame.Visible = true
-    buildCategory("Teleport", SearchBox.Text)
-end)
-
--- OPTIONAL: keep external Teleport GUI for quick list (kept but optional)
-local TeleportGui = Instance.new("Frame", GUI)
-TeleportGui.Name = "FTF_Teleport_Window"
-TeleportGui.Size = UDim2.new(0, 320, 0, 420)
-TeleportGui.Position = UDim2.new(0.5, MENU_WIDTH/2 + 20, 0.12, 0)
-TeleportGui.BackgroundColor3 = Color3.fromRGB(18,18,18)
-TeleportGui.BorderSizePixel = 0
-TeleportGui.Visible = false
-local tpCorner2 = Instance.new("UICorner", TeleportGui); tpCorner2.CornerRadius = UDim.new(0,12)
-local tpTitle = Instance.new("TextLabel", TeleportGui); tpTitle.Size = UDim2.new(1, -24, 0, 32); tpTitle.Position = UDim2.new(0, 12, 0, 12); tpTitle.BackgroundTransparency = 1; tpTitle.Font = Enum.Font.GothamBold; tpTitle.TextSize = 16; tpTitle.TextColor3 = Color3.fromRGB(200,220,240); tpTitle.Text = "Teleporte - Jogadores"; tpTitle.TextXAlignment = Enum.TextXAlignment.Left
-local tpClose = Instance.new("TextButton", TeleportGui); tpClose.Size = UDim2.new(0, 28, 0, 28); tpClose.Position = UDim2.new(1, -40, 0, 8); tpClose.BackgroundTransparency = 1; tpClose.Text = "✕"; tpClose.Font = Enum.Font.GothamBlack; tpClose.TextColor3 = Color3.fromRGB(180,200,220)
-tpClose.MouseButton1Click:Connect(function() TeleportGui.Visible = false end)
-local tpScroll = Instance.new("ScrollingFrame", TeleportGui); tpScroll.Size = UDim2.new(1, -24, 1, -68); tpScroll.Position = UDim2.new(0, 12, 0, 48); tpScroll.BackgroundTransparency = 1; tpScroll.BorderSizePixel = 0; tpScroll.ScrollBarThickness = 8
-local tpLayout = Instance.new("UIListLayout", tpScroll); tpLayout.SortOrder = Enum.SortOrder.LayoutOrder; tpLayout.Padding = UDim.new(0, 8)
-
-local function rebuildTeleportWindow()
-    for _,c in pairs(tpScroll:GetChildren()) do if c:IsA("TextButton") or c:IsA("Frame") then c:Destroy() end end
-    local order = 1
-    local players = Players:GetPlayers()
-    table.sort(players, function(a,b) return (a.DisplayName:lower()..a.Name:lower()) < (b.DisplayName:lower()..b.Name:lower()) end)
-    for _,pl in ipairs(players) do
-        if pl ~= LocalPlayer then
-            local b = Instance.new("TextButton", tpScroll)
-            b.Size = UDim2.new(1, -8, 0, 40); b.Position = UDim2.new(0, 4, 0, 0)
-            b.BackgroundColor3 = Color3.fromRGB(26,26,26); b.BorderSizePixel = 0
-            local bc = Instance.new("UICorner", b); bc.CornerRadius = UDim.new(0,8)
-            b.LayoutOrder = order; order = order + 1
-            local lbl = Instance.new("TextLabel", b); lbl.BackgroundTransparency = 1; lbl.Size = UDim2.new(1, -10, 1, 0); lbl.Position = UDim2.new(0, 8, 0, 0); lbl.Font = Enum.Font.GothamSemibold; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(200,200,200)
-            lbl.Text = pl.DisplayName .. " (" .. pl.Name .. ")"
-            b.MouseButton1Click:Connect(function()
-                local myChar = LocalPlayer.Character; local targetChar = pl.Character
-                if not myChar or not targetChar then return end
-                local hrp = myChar:FindFirstChild("HumanoidRootPart") or myChar:FindFirstChild("Torso") or myChar:FindFirstChild("UpperTorso")
-                local thrp = targetChar:FindFirstChild("HumanoidRootPart") or targetChar:FindFirstChild("Torso") or targetChar:FindFirstChild("UpperTorso")
-                if not hrp or not thrp then return end
-                pcall(function() hrp.CFrame = thrp.CFrame + Vector3.new(0,4,0) end)
-                TeleportGui.Visible = false
-            end)
-        end
-    end
-end
-
-Players.PlayerAdded:Connect(function() rebuildTeleportWindow() end)
-Players.PlayerRemoving:Connect(function() rebuildTeleportWindow() end)
-rebuildTeleportWindow()
-
--- Cleanup
+-- =====================================================================
+-- Cleanup function (ensure snow and other listeners are cleaned)
+-- =====================================================================
 local function cleanupAll()
     if TextureActive then disableTextureToggle() end
     if GraySkinActive then disableGraySkin() end
+    if SnowActive then disableSnowTexture() end
     for p,_ in pairs(playerHighlights) do RemovePlayerHighlight(p) end
     for p,_ in pairs(NameTags) do RemoveNameTag(p) end
     for m,_ in pairs(compHighlights) do RemoveComputerHighlight(m) end
@@ -814,7 +874,7 @@ local function cleanupAll()
     if podDescendantAddConn then pcall(function() podDescendantAddConn:Disconnect() end); podDescendantAddConn = nil end
     if podDescendantRemConn then pcall(function() podDescendantRemConn:Disconnect() end); podDescendantRemConn = nil end
     if textureDescendantConn then pcall(function() textureDescendantConn:Disconnect() end); textureDescendantConn = nil end
-    if TeleportGui and TeleportGui.Parent then pcall(function() TeleportGui:Destroy() end) end
+    if snowPartConn then pcall(function() snowPartConn:Disconnect() end); snowPartConn = nil end
     if MainFrame and MainFrame.Parent then pcall(function() MainFrame:Destroy() end) end
     if GUI and GUI.Parent then pcall(function() GUI:Destroy() end) end
 end
@@ -831,4 +891,4 @@ Players.PlayerRemoving:Connect(function(p)
     if currentCategory == "Teleport" then task.delay(0.05, function() buildCategory("Teleport", SearchBox.Text) end) end
 end)
 
-print("[FTF_ESP] Atualizado: Search vazio + Teleport como categoria dinâmica")
+print("[FTF_ESP] Atualizado: removido quick-teleport, Teleport dentro do menu, Snow texture adicionada")
