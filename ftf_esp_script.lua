@@ -1,11 +1,12 @@
--- FTF ESP Script — Complete, fixed version
--- Notes:
---  - All ESP toggles now use explicit enable/disable functions that fully clean up visuals and listeners.
---  - UI toggles call those functions and refresh visuals from the real state (entry.get()) to avoid optimistic mismatch.
---  - Down timer doesn't auto-activate; billboards are only created while the timer is enabled.
---  - Door ESP uses an aura-style Highlight around door models.
---  - Teleport tab kept inside the menu; Search box blank.
---  - Exposed safe toggle functions in local scope and used by the menu.
+-- FTF ESP Script — Full complete script
+-- Features:
+--  - Player / Computer / Freeze Pod / Door ESP (with proper enable/disable and cleanup)
+--  - Textures toggles: Remove players textures, White Brick texture, Snow texture (toggleable, with restoration)
+--  - Down ragdoll timer (toggleable)
+--  - Teleport list in menu (dynamic)
+--  - Modern UI: loading screen, toast hint, mobile toggle button, tabs, search, toggles
+--  - Keyboard "K" opens menu on PC; mobile button available for touch devices
+-- Author: David (as requested)
 
 -- Services
 local UIS = game:GetService("UserInputService")
@@ -15,14 +16,15 @@ local TweenService = game:GetService("TweenService")
 local Workspace = game:GetService("Workspace")
 local Lighting = game:GetService("Lighting")
 local CoreGui = game:GetService("CoreGui")
+
 local LocalPlayer = Players.LocalPlayer
-
--- UI root
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
--- cleanup previous GUIs
-for _,v in pairs(CoreGui:GetChildren()) do if v.Name=="FTF_ESP_GUI_DAVID" then v:Destroy() end end
-for _,v in pairs(PlayerGui:GetChildren()) do if v.Name=="FTF_ESP_GUI_DAVID" then v:Destroy() end end
 
+-- Clean up previous GUI instances
+for _,v in pairs(CoreGui:GetChildren()) do if v.Name == "FTF_ESP_GUI_DAVID" then pcall(function() v:Destroy() end) end end
+for _,v in pairs(PlayerGui:GetChildren()) do if v.Name == "FTF_ESP_GUI_DAVID" then pcall(function() v:Destroy() end) end end
+
+-- Root GUI
 local GUI = Instance.new("ScreenGui")
 GUI.Name = "FTF_ESP_GUI_DAVID"
 GUI.ResetOnSpawn = false
@@ -30,9 +32,7 @@ GUI.IgnoreGuiInset = true
 pcall(function() GUI.Parent = CoreGui end)
 if not GUI.Parent or GUI.Parent ~= CoreGui then GUI.Parent = PlayerGui end
 
--- ============================================================================
 -- Utility
--- ============================================================================
 local function safeDestroy(obj)
     if obj and obj.Parent then
         pcall(function() obj:Destroy() end)
@@ -40,10 +40,10 @@ local function safeDestroy(obj)
 end
 
 -- ============================================================================
--- CORE FEATURES (enable/disable implementations)
--- Each feature has: Active flag, storage (highlights/billboards), and its
--- enable/disable functions that fully clean up visuals and disconnect listeners.
+-- CORE FEATURE IMPLEMENTATIONS (enable/disable + helpers)
+-- All features ensure they clean up visuals and disconnect listeners on disable.
 -- ============================================================================
+
 -- PLAYER ESP
 local PlayerESPActive = false
 local playerHighlights = {}   -- [player] = Highlight
@@ -105,14 +105,12 @@ end
 local function enablePlayerESP()
     if PlayerESPActive then return end
     PlayerESPActive = true
-    -- add existing players
     for _,p in ipairs(Players:GetPlayers()) do
         if p ~= LocalPlayer then
             createPlayerHighlight(p)
             createPlayerNameTag(p)
         end
     end
-    -- connect player added
     if not playerAddedConn then
         playerAddedConn = Players.PlayerAdded:Connect(function(p)
             p.CharacterAdded:Connect(function()
@@ -171,7 +169,6 @@ end
 local function enableComputerESP()
     if ComputerESPActive then return end
     ComputerESPActive = true
-    -- scan existing
     for _,d in ipairs(Workspace:GetDescendants()) do
         if isComputerModel(d) then addComputerHighlight(d) end
     end
@@ -250,9 +247,7 @@ local function enableFreezePodsESP()
         end)
     end
     if not podDescRemovingConn then
-        podDescRemovingConn = Workspace.DescendantRemoving:Connect(function(desc)
-            removePodHighlight(desc)
-        end)
+        podDescRemovingConn = Workspace.DescendantRemoving:Connect(function(desc) removePodHighlight(desc) end)
     end
 end
 
@@ -266,7 +261,7 @@ end
 
 local function ToggleFreezePodsESP() if FreezePodsActive then disableFreezePodsESP() else enableFreezePodsESP() end end
 
--- DOOR AURA (Highlight around model)
+-- DOOR AURA
 local DoorESPActive = false
 local doorHighlights = {}
 local doorDescAddedConn, doorDescRemovingConn
@@ -302,11 +297,7 @@ end
 local function enableDoorESP()
     if DoorESPActive then return end
     DoorESPActive = true
-    -- initial scan
-    for _,d in ipairs(Workspace:GetDescendants()) do
-        if d:IsA("Model") and isDoorModel(d) then addDoorAura(d) end
-    end
-    -- listen for additions/removals
+    for _,d in ipairs(Workspace:GetDescendants()) do if d:IsA("Model") and isDoorModel(d) then addDoorAura(d) end end
     if not doorDescAddedConn then
         doorDescAddedConn = Workspace.DescendantAdded:Connect(function(desc)
             if not DoorESPActive then return end
@@ -341,7 +332,7 @@ local function ToggleDoorESP() if DoorESPActive then disableDoorESP() else enabl
 -- DOWN TIMER (Ragdoll)
 local DownTimerActive = false
 local DOWN_TIME = 28
-local ragdollBillboards = {} -- [player] = info
+local ragdollBillboards = {}
 local ragdollConnects = {}
 local bottomUI = {}
 
@@ -441,14 +432,12 @@ local function attachRagdollListenerToPlayer(player)
     end)
 end
 
--- Attach to existing players
 for _,p in pairs(Players:GetPlayers()) do attachRagdollListenerToPlayer(p) end
 Players.PlayerAdded:Connect(function(p) attachRagdollListenerToPlayer(p); p.CharacterAdded:Connect(function() task.wait(0.06); if ragdollBillboards[p] then removeRagdollBillboard(p); if DownTimerActive then createRagdollBillboardFor(p) end end end) end)
 
 local function ToggleDownTimer()
     DownTimerActive = not DownTimerActive
     if DownTimerActive then
-        -- create billboards for currently ragdolled players
         for _,p in pairs(Players:GetPlayers()) do
             local ok, temp = pcall(function() return p:FindFirstChild("TempPlayerStatsModule") end)
             if ok and temp then
@@ -465,7 +454,7 @@ local function ToggleDownTimer()
     end
 end
 
--- GRAY SKIN (Remove players Textures)
+-- TEXTURE / SNOW / GRAY SKIN
 local GraySkinActive = false
 local skinBackup = {}
 local grayConns = {}
@@ -525,12 +514,12 @@ local function disableGraySkin()
     GraySkinActive = false
     for p,_ in pairs(skinBackup) do pcall(function() restoreGrayForPlayer(p) end) end
     skinBackup = {}
-    for k,conn in pairs(grayConns) do pcall(function() conn:Disconnect() end); grayConns[k]=nil end
+    for k,conn in pairs(grayConns) do pcall(function() conn:Disconnect() end); grayConns[k] = nil end
 end
 
 local function ToggleGraySkin() if GraySkinActive then disableGraySkin() else enableGraySkin() end end
 
--- WHITE BRICK TEXTURE
+-- White brick texture
 local TextureActive = false
 local textureBackup = {}
 local textureDescendantConn = nil
@@ -604,7 +593,7 @@ end
 
 local function ToggleTexture() if TextureActive then disableTextureToggle() else enableTextureToggle() end end
 
--- SNOW TEXTURE (toggle)
+-- Snow texture (toggleable, with lighting/sky backup)
 local SnowActive = false
 local snowBackupParts = {}
 local snowPartConn = nil
@@ -677,7 +666,12 @@ local function enableSnowTexture()
         Lighting.EnvironmentSpecularScale = 1
     end)
     local sky = Instance.new("Sky")
-    sky.SkyboxBk = ""; sky.SkyboxDn = ""; sky.SkyboxFt = ""; sky.SkyboxLf = ""; sky.SkyboxRt = ""; sky.SkyboxUp = ""
+    sky.SkyboxBk = ""
+    sky.SkyboxDn = ""
+    sky.SkyboxFt = ""
+    sky.SkyboxLf = ""
+    sky.SkyboxRt = ""
+    sky.SkyboxUp = ""
     sky.Parent = Lighting
     createdSnowSky = sky
     snowPartConn = Workspace.DescendantAdded:Connect(function(desc)
@@ -716,7 +710,111 @@ end
 local function ToggleSnow() if SnowActive then disableSnowTexture() else enableSnowTexture() end end
 
 -- ============================================================================
--- UI: Organized menu (tabs + search) and clear wiring to the toggle functions above
+-- UI: Loading screen, Toast hint, Mobile toggle, Main menu (tabs, search, toggles)
+-- ============================================================================
+
+-- Loading overlay
+local LoadingGui = Instance.new("Frame")
+LoadingGui.Name = "FTF_Loading"
+LoadingGui.Size = UDim2.new(1,0,1,0)
+LoadingGui.Position = UDim2.new(0,0,0,0)
+LoadingGui.BackgroundColor3 = Color3.fromRGB(10,12,14)
+LoadingGui.BorderSizePixel = 0
+LoadingGui.Parent = GUI
+
+local loadingShade = Instance.new("Frame", LoadingGui)
+loadingShade.Size = UDim2.new(1,0,1,0)
+loadingShade.BackgroundTransparency = 0.85
+loadingShade.BorderSizePixel = 0
+
+-- Center panel
+local panelW, panelH = 420, 120
+local CenterPanel = Instance.new("Frame", LoadingGui)
+CenterPanel.Size = UDim2.new(0, panelW, 0, panelH)
+CenterPanel.Position = UDim2.new(0.5, -panelW/2, 0.45, -panelH/2)
+CenterPanel.BackgroundColor3 = Color3.fromRGB(18,18,20)
+CenterPanel.BorderSizePixel = 0
+local cpCorner = Instance.new("UICorner", CenterPanel); cpCorner.CornerRadius = UDim.new(0,14)
+local cpStroke = Instance.new("UIStroke", CenterPanel); cpStroke.Color = Color3.fromRGB(40,40,48); cpStroke.Thickness = 1; cpStroke.Transparency = 0.3
+
+local title = Instance.new("TextLabel", CenterPanel)
+title.Size = UDim2.new(1, -40, 0, 36)
+title.Position = UDim2.new(0, 20, 0, 14)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.FredokaOne
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(220,220,230)
+title.Text = "Loading FTF hub - By David"
+title.TextXAlignment = Enum.TextXAlignment.Left
+
+local sub = Instance.new("TextLabel", CenterPanel)
+sub.Size = UDim2.new(1, -40, 0, 18)
+sub.Position = UDim2.new(0, 20, 0, 56)
+sub.BackgroundTransparency = 1
+sub.Font = Enum.Font.Gotham
+sub.TextSize = 12
+sub.TextColor3 = Color3.fromRGB(170,170,180)
+sub.Text = "Preparing UI and features..."
+sub.TextXAlignment = Enum.TextXAlignment.Left
+
+local spinner = Instance.new("Frame", CenterPanel)
+spinner.Size = UDim2.new(0, 40, 0, 40)
+spinner.Position = UDim2.new(1, -64, 0, 20)
+spinner.BackgroundColor3 = Color3.fromRGB(24,24,26)
+local spCorner = Instance.new("UICorner", spinner); spCorner.CornerRadius = UDim.new(0,10)
+local inner = Instance.new("Frame", spinner)
+inner.Size = UDim2.new(0, 24, 0, 24)
+inner.Position = UDim2.new(0.5, -12, 0.5, -12)
+inner.BackgroundColor3 = Color3.fromRGB(60,160,255)
+local innerCorner = Instance.new("UICorner", inner); innerCorner.CornerRadius = UDim.new(0,8)
+local spinTween = TweenService:Create(spinner, TweenInfo.new(1.2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true), {Rotation = 360})
+spinTween:Play()
+
+-- Toast
+local Toast = Instance.new("Frame", GUI)
+Toast.Name = "FTF_Toast"
+Toast.Size = UDim2.new(0, 360, 0, 46)
+Toast.Position = UDim2.new(0.5, -180, 0.02, 0)
+Toast.BackgroundColor3 = Color3.fromRGB(20,20,22)
+Toast.BorderSizePixel = 0
+Toast.Visible = false
+local toastCorner = Instance.new("UICorner", Toast); toastCorner.CornerRadius = UDim.new(0,12)
+local toastStroke = Instance.new("UIStroke", Toast); toastStroke.Color = Color3.fromRGB(45,90,140); toastStroke.Thickness = 1; toastStroke.Transparency = 0.6
+local toastLabel = Instance.new("TextLabel", Toast)
+toastLabel.Size = UDim2.new(1, -48, 1, 0)
+toastLabel.Position = UDim2.new(0, 12, 0, 0)
+toastLabel.BackgroundTransparency = 1
+toastLabel.Font = Enum.Font.GothamSemibold
+toastLabel.TextSize = 14
+toastLabel.TextColor3 = Color3.fromRGB(220,220,220)
+toastLabel.Text = "Use the letter K on your keyboard to open the MENU."
+toastLabel.TextXAlignment = Enum.TextXAlignment.Left
+local toastClose = Instance.new("TextButton", Toast)
+toastClose.Size = UDim2.new(0, 28, 0, 28)
+toastClose.Position = UDim2.new(1, -40, 0.5, -14)
+toastClose.Text = "✕"
+toastClose.Font = Enum.Font.Gotham
+toastClose.TextSize = 16
+toastClose.BackgroundColor3 = Color3.fromRGB(16,16,16)
+local tcCorner = Instance.new("UICorner", toastClose); tcCorner.CornerRadius = UDim.new(0,8)
+toastClose.MouseButton1Click:Connect(function() Toast.Visible = false end)
+
+-- Mobile toggle button (for devices without keyboard or where "K" is hard)
+local MobileToggle = Instance.new("TextButton", GUI)
+MobileToggle.Name = "FTF_MobileToggle"
+MobileToggle.Size = UDim2.new(0, 56, 0, 56)
+MobileToggle.Position = UDim2.new(0.02, 0, 0.06, 0)
+MobileToggle.BackgroundColor3 = Color3.fromRGB(24,24,26)
+MobileToggle.BorderSizePixel = 0
+MobileToggle.Text = "☰"
+MobileToggle.Font = Enum.Font.GothamBold
+MobileToggle.TextColor3 = Color3.fromRGB(220,220,220)
+MobileToggle.Visible = UIS.TouchEnabled and true or false
+local mtCorner = Instance.new("UICorner", MobileToggle); mtCorner.CornerRadius = UDim.new(0,12)
+local mtStroke = Instance.new("UIStroke", MobileToggle); mtStroke.Color = Color3.fromRGB(30,80,130); mtStroke.Transparency = 0.75
+
+-- ============================================================================
+-- MAIN MENU UI (tabs, search, list) — build and wire toggles to functions
 -- ============================================================================
 
 local MENU_WIDTH = 520
@@ -731,7 +829,7 @@ MainFrame.BorderSizePixel = 0
 MainFrame.Visible = false
 local mfCorner = Instance.new("UICorner", MainFrame); mfCorner.CornerRadius = UDim.new(0,12)
 
--- Title bar
+-- Titlebar components
 local TitleBar = Instance.new("Frame", MainFrame)
 TitleBar.Size = UDim2.new(1, 0, 0, 48)
 TitleBar.Position = UDim2.new(0,0,0,0)
@@ -744,7 +842,7 @@ TitleLbl.TextSize = 16
 TitleLbl.TextColor3 = Color3.fromRGB(220,220,220)
 TitleLbl.BackgroundTransparency = 1
 TitleLbl.Position = UDim2.new(0,12,0,12)
-TitleLbl.Size = UDim2.new(0,220,0,24)
+TitleLbl.Size = UDim2.new(0,260,0,24)
 TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
 local SearchBox = Instance.new("TextBox", TitleBar)
@@ -814,7 +912,7 @@ contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
     ContentScroll.CanvasSize = UDim2.new(0,0,0, contentLayout.AbsoluteContentSize.Y + 18)
 end)
 
--- UI element creators
+-- UI creators
 local function createToggleItem(parent, labelText, initial, onToggle)
     local item = Instance.new("Frame", parent)
     item.Size = UDim2.new(0.95, 0, 0, 44)
@@ -861,10 +959,8 @@ local function createToggleItem(parent, labelText, initial, onToggle)
     end
 
     sw.MouseButton1Click:Connect(function()
-        -- call the provided toggle handler; it should flip underlying state
         pcall(function() onToggle() end)
-        -- after a small delay ensure we read the actual state externally by expecting the caller to update via setVisual passed back in buildCategory
-        updateVisual(not state) -- optimistic feedback; buildCategory will refresh to real state
+        updateVisual(not state)
     end)
 
     updateVisual(state)
@@ -904,7 +1000,7 @@ local function createButtonItem(parent, labelText, buttonText, callback)
     return item, lbl, btn
 end
 
--- Categories mapping to underlying getter and toggles (must call Toggle* functions)
+-- Categories mapping — wire to toggle functions
 local Categories = {
     ["ESP"] = {
         { label = "ESP Players", get = function() return PlayerESPActive end, toggle = function() TogglePlayerESP() end },
@@ -922,9 +1018,8 @@ local Categories = {
     },
 }
 
--- Build content for categories; Teleport handled specially
+-- Build category content
 local currentCategory = "ESP"
-
 local function clearContent()
     for _,v in pairs(ContentScroll:GetChildren()) do
         if v:IsA("Frame") then v:Destroy() end
@@ -965,7 +1060,6 @@ local function buildCategory(name, filter)
                 state = ok and state or false
                 local item, setVisual = createToggleItem(ContentScroll, entry.label, state, function()
                     pcall(function() entry.toggle() end)
-                    -- read new state and update toggle visual accordingly
                     local ok2, newState = pcall(function() return entry.get() end)
                     if ok2 and setVisual then pcall(function() setVisual(newState) end) end
                 end)
@@ -976,7 +1070,7 @@ local function buildCategory(name, filter)
     end
 end
 
--- Tab visuals and handlers
+-- Tab click handlers
 local function setActiveTabVisual(activeTab)
     TabESP.BackgroundColor3 = (activeTab == TabESP) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
     TabTextures.BackgroundColor3 = (activeTab == TabTextures) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
@@ -990,15 +1084,10 @@ TabTimers.MouseButton1Click:Connect(function() currentCategory = "Timers"; setAc
 TabTeleport.MouseButton1Click:Connect(function() currentCategory = "Teleport"; setActiveTabVisual(TabTeleport); buildCategory("Teleport", SearchBox.Text) end)
 
 SearchBox:GetPropertyChangedSignal("Text"):Connect(function() buildCategory(currentCategory, SearchBox.Text) end)
-
 Players.PlayerAdded:Connect(function() if currentCategory == "Teleport" then task.delay(0.06, function() buildCategory("Teleport", SearchBox.Text) end) end end)
 Players.PlayerRemoving:Connect(function() if currentCategory == "Teleport" then task.delay(0.06, function() buildCategory("Teleport", SearchBox.Text) end) end end)
 
--- initial
-setActiveTabVisual(TabESP)
-buildCategory("ESP", "")
-
--- draggable main frame
+-- draggable MainFrame
 local dragging, dragStart, startPos = false, nil, nil
 MainFrame.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
@@ -1013,11 +1102,22 @@ MainFrame.InputChanged:Connect(function(input)
     end
 end)
 
--- toggle open with K
+-- Keyboard K toggles menu on PC
 local menuOpen = false
-UIS.InputBegan:Connect(function(input, gpe) if not gpe and input.KeyCode == Enum.KeyCode.K then menuOpen = not menuOpen; MainFrame.Visible = menuOpen end end)
+UIS.InputBegan:Connect(function(input, gpe)
+    if gpe then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.K then
+        menuOpen = not menuOpen
+        MainFrame.Visible = menuOpen
+    end
+end)
 
--- expose toggles in _G for compatibility if needed (also helps debugging)
+-- Mobile toggle button toggles MainFrame
+MobileToggle.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+end)
+
+-- Expose toggles in _G for compatibility/debugging
 _G.FTF = _G.FTF or {}
 _G.FTF.TogglePlayerESP = TogglePlayerESP
 _G.FTF.ToggleComputerESP = ToggleComputerESP
@@ -1028,13 +1128,45 @@ _G.FTF.ToggleSnow = ToggleSnow
 _G.FTF.ToggleGraySkin = ToggleGraySkin
 _G.FTF.ToggleDownTimer = ToggleDownTimer
 _G.FTF.DisableAllESP = function()
-    disablePlayerESP()
-    disableComputerESP()
-    disableFreezePodsESP()
-    disableDoorESP()
+    disablePlayerESP(); disableComputerESP(); disableFreezePodsESP(); disableDoorESP()
 end
 
--- Cleanup function
+-- initial category build
+setActiveTabVisual(TabESP)
+buildCategory("ESP", "")
+
+-- Loading finish routine
+local function finishLoading()
+    TweenService:Create(CenterPanel, TweenInfo.new(0.4, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
+    TweenService:Create(loadingShade, TweenInfo.new(0.5, Enum.EasingStyle.Quad), {BackgroundTransparency = 1}):Play()
+    spinTween:Cancel()
+    task.delay(0.45, function()
+        safeDestroy(LoadingGui)
+        -- show toast
+        Toast.Visible = true
+        TweenService:Create(Toast, TweenInfo.new(0.28, Enum.EasingStyle.Quad), {Position = UDim2.new(0.5, -180, 0.02, 0)}):Play()
+        -- auto-hide toast after 8 sec
+        task.delay(8, function()
+            if Toast and Toast.Parent then
+                TweenService:Create(Toast, TweenInfo.new(0.24, Enum.EasingStyle.Quad), {Position = UDim2.new(0.5, -180, -0.08, 0)}):Play()
+                task.delay(0.26, function() if Toast and Toast.Parent then Toast.Visible = false end end)
+            end
+        end)
+    end)
+end
+
+-- Show menu after loading and play finish
+local menuShouldOpenAfterLoad = true
+task.spawn(function()
+    task.wait(1.35)
+    if menuShouldOpenAfterLoad and MainFrame and MainFrame.Parent then
+        MainFrame.Visible = true
+        menuOpen = true
+    end
+    finishLoading()
+end)
+
+-- Cleanup function (attempt to restore and disconnect everything)
 local function cleanupAll()
     if TextureActive then disableTextureToggle() end
     if GraySkinActive then disableGraySkin() end
@@ -1047,7 +1179,7 @@ local function cleanupAll()
     if GUI and GUI.Parent then safeDestroy(GUI) end
 end
 
--- ensure ragdoll listeners cleaned on player removing
+-- Ensure player cleanup updates Teleport list
 Players.PlayerRemoving:Connect(function(p)
     if playerHighlights[p] then removePlayerHighlight(p) end
     if playerNameTags[p] then removePlayerNameTag(p) end
@@ -1057,4 +1189,4 @@ Players.PlayerRemoving:Connect(function(p)
     if currentCategory == "Teleport" then task.delay(0.05, function() buildCategory("Teleport", SearchBox.Text) end) end
 end)
 
-print("[FTF_ESP] Complete fixed script loaded")
+print("[FTF_ESP] Loaded successfully — Loading screen displayed and menu created.")
