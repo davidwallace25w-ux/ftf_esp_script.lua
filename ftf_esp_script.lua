@@ -1,9 +1,8 @@
 -- FTF ESP Script — consolidated fixed version (patched)
 -- Ajustes:
---  - Adicionado botão "ESP Doors" (Ativar ESP Doors) com aura amarela para portas
---  - Highlights parentados na Workspace; qualidade de ESP melhorada
---  - Conexões de DescendantAdded/Removing para portas gerenciadas corretamente
---  - Layout do menu ajustado para acomodar o novo botão
+--  - ESP Doors agora usa bordas finas (SelectionBox) amarelas ao redor da peça principal da porta
+--  - Mantida limpeza de conexões e comportamento de toggle
+--  - Qualidade dos outros highlights mantida (players/computers/pods)
 
 -- Services
 local UIS = game:GetService("UserInputService")
@@ -98,7 +97,7 @@ end
 createStartupNotice()
 
 -- ---------- Main menu frame ----------
-local gWidth, gHeight = 360, 540 -- aumentado para acomodar novo botão
+local gWidth, gHeight = 360, 540 -- aumentado para acomodar botões
 local Frame = Instance.new("Frame", GUI)
 Frame.Name = "FTF_Menu_Frame"
 Frame.BackgroundColor3 = Color3.fromRGB(8,10,14)
@@ -180,7 +179,7 @@ local function createFuturisticButton(txt, ypos, c1, c2)
     return btnOuter, indBar, label
 end
 
--- Create buttons (reordered / spacing adjusted to include ESP Doors)
+-- Create buttons (inclui ESP Doors)
 local PlayerBtn, PlayerIndicator = createFuturisticButton("Ativar ESP Jogadores", 70, Color3.fromRGB(28,140,96), Color3.fromRGB(52,215,101))
 local CompBtn, CompIndicator   = createFuturisticButton("Ativar Destacar Computadores", 136, Color3.fromRGB(28,90,170), Color3.fromRGB(54,144,255))
 local DoorBtn, DoorIndicator   = createFuturisticButton("Ativar ESP Doors", 202, Color3.fromRGB(230,200,60), Color3.fromRGB(255,220,100))
@@ -314,71 +313,104 @@ Workspace.DescendantAdded:Connect(function(obj) if ComputerESPActive and isCompu
 Workspace.DescendantRemoving:Connect(RemoveComputerHighlight)
 RunService.RenderStepped:Connect(function() if ComputerESPActive then for m,h in pairs(compHighlights) do if m and m.Parent and h and h.Parent then h.FillColor = getPcColor(m) end end end end)
 
--- ========== ESP DOORS (AMARELO) ==========
+-- ========== ESP DOORS (BORDAS FINAS AMARELAS) ==========
 local DoorESPActive = false
-local doorHighlights = {}
+local doorHighlights = {} -- model => SelectionBox
 local doorDescendantAddConn = nil
 local doorDescendantRemConn = nil
 
 local function isDoorModel(model)
     if not model or not model:IsA("Model") then return false end
     local name = model.Name:lower()
-    -- catch common door model names
+    -- detecta portas por nome (flexível)
     if name:find("door") then return true end
+    if name:find("exitdoor") then return true end
     if name:find("single") and name:find("door") then return true end
     if name:find("double") and name:find("door") then return true end
-    if name:find("exitdoor") then return true end
     return false
+end
+
+local function getDoorPrimaryPart(model)
+    if not model then return nil end
+    -- procure por DoorBoard, Part, ExitDoorTrigger, Door etc.
+    local candidates = {"DoorBoard","Door", "Part", "ExitDoorTrigger", "DoorL", "DoorR", "BasePart"}
+    for _,n in ipairs(candidates) do
+        local v = model:FindFirstChild(n, true)
+        if v and v:IsA("BasePart") then return v end
+    end
+    -- fallback: maior BasePart do modelo
+    local biggest
+    for _,c in ipairs(model:GetDescendants()) do
+        if c:IsA("BasePart") then
+            if not biggest or c.Size.Magnitude > biggest.Size.Magnitude then biggest = c end
+        end
+    end
+    return biggest
 end
 
 local function AddDoorHighlight(model)
     if not model or not isDoorModel(model) then return end
-    if doorHighlights[model] then doorHighlights[model]:Destroy(); doorHighlights[model]=nil end
-    local h = Instance.new("Highlight")
-    h.Name = "[FTF_ESP_DoorAura_DAVID]"
-    h.Adornee = model
-    h.Parent = Workspace
-    h.FillColor = Color3.fromRGB(255,230,120)   -- amarelo claro
-    h.OutlineColor = Color3.fromRGB(200,160,30) -- amarelo escuro
-    -- melhor qualidade (menos transparência)
-    h.FillTransparency = 0.10
-    h.OutlineTransparency = 0.03
-    h.Enabled = true
-    doorHighlights[model] = h
+    -- já existe: remover primeiro (substituição segura)
+    if doorHighlights[model] then
+        pcall(function() doorHighlights[model]:Destroy() end)
+        doorHighlights[model] = nil
+    end
+    local primary = getDoorPrimaryPart(model)
+    if not primary then return end
+    local box = Instance.new("SelectionBox")
+    box.Name = "[FTF_ESP_DoorEdge_DAVID]"
+    box.Adornee = primary
+    -- cor amarela suave
+    pcall(function() box.Color3 = Color3.fromRGB(255,230,120) end)
+    pcall(function() box.Color = Color3.fromRGB(255,230,120) end) -- em caso de propriedades diferentes
+    -- linha fina e sutil
+    if pcall(function() box.LineThickness = 0.01 end) then end
+    if pcall(function() box.SurfaceTransparency = 1 end) then end
+    box.Parent = Workspace
+    doorHighlights[model] = box
 end
 
 local function RemoveDoorHighlight(model)
-    if doorHighlights[model] then pcall(function() doorHighlights[model]:Destroy() end); doorHighlights[model]=nil end
+    if doorHighlights[model] then pcall(function() doorHighlights[model]:Destroy() end); doorHighlights[model] = nil end
 end
 
 local function RefreshDoorESP()
     for m,_ in pairs(doorHighlights) do RemoveDoorHighlight(m) end
     if not DoorESPActive then return end
     for _,d in ipairs(Workspace:GetDescendants()) do
-        if isDoorModel(d) then AddDoorHighlight(d) end
+        if isDoorModel(d) then
+            -- se for model, adicione borda na peça principal
+            AddDoorHighlight(d)
+        end
     end
 end
 
 local function onDoorDescendantAdded(desc)
     if not DoorESPActive then return end
-    if desc and (desc:IsA("Model") or desc:IsA("Folder")) and isDoorModel(desc) then
-        task.delay(0.05, function() AddDoorHighlight(desc) end)
-    elseif desc and desc:IsA("BasePart") then
+    if not desc then return end
+    if desc:IsA("Model") and isDoorModel(desc) then
+        task.delay(0.04, function() AddDoorHighlight(desc) end)
+    elseif desc:IsA("BasePart") then
         local mdl = desc:FindFirstAncestorWhichIsA("Model")
-        if mdl and isDoorModel(mdl) then task.delay(0.05, function() AddDoorHighlight(mdl) end) end
+        if mdl and isDoorModel(mdl) then
+            task.delay(0.04, function() AddDoorHighlight(mdl) end)
+        end
     end
 end
 
 local function onDoorDescendantRemoving(desc)
-    if desc and desc:IsA("Model") and isDoorModel(desc) then
+    if not desc then return end
+    if desc:IsA("Model") and isDoorModel(desc) then
         RemoveDoorHighlight(desc)
-    elseif desc and desc:IsA("BasePart") then
+    elseif desc:IsA("BasePart") then
         local mdl = desc:FindFirstAncestorWhichIsA("Model")
-        if mdl and isDoorModel(mdl) then RemoveDoorHighlight(mdl) end
+        if mdl and isDoorModel(mdl) then
+            RemoveDoorHighlight(mdl)
+        end
     end
 end
 
--- ========== FREEZE PODS AURA ==========
+-- ========== FREEZE PODS AURA (mantido) ==========
 local FreezePodsActive = false
 local podHighlights = {}
 local podDescendantAddConn = nil
@@ -395,12 +427,12 @@ end
 
 local function AddFreezePodHighlight(model)
     if not model or not isFreezePodModel(model) then return end
-    if podHighlights[model] then podHighlights[model]:Destroy(); podHighlights[model]=nil end
+    if podHighlights[model] then pcall(function() podHighlights[model]:Destroy() end); podHighlights[model]=nil end
     local h = Instance.new("Highlight")
     h.Name = "[FTF_ESP_FreezePodAura_DAVID]"
     h.Adornee = model
     h.Parent = Workspace
-    h.FillColor = Color3.fromRGB(255,100,100)    -- vermelho (pedido anterior)
+    h.FillColor = Color3.fromRGB(255,100,100)    -- vermelho
     h.OutlineColor = Color3.fromRGB(200,40,40)
     h.FillTransparency = 0.08
     h.OutlineTransparency = 0.02
@@ -662,7 +694,7 @@ CompBtn.MouseButton1Click:Connect(function()
     if ComputerESPActive then CompIndicator.BackgroundColor3 = Color3.fromRGB(54,144,255) else CompIndicator.BackgroundColor3 = Color3.fromRGB(90,160,220) end
 end)
 
--- Door ESP button
+-- Door ESP button (bordas finas)
 DoorBtn.MouseButton1Click:Connect(function()
     DoorESPActive = not DoorESPActive
     if DoorESPActive then
