@@ -1,13 +1,15 @@
--- FTF ESP Script — Complete script with new Texture options:
---  - "Remove Fog" (toggleable) — modifies Lighting (FogEnd, FogStart, ClockTime, Brightness, GlobalShadows)
---  - "Remove Textures" (toggleable) — runs the provided heavy optimization script but saves backups so it can be reverted
--- Also includes:
---  - Player / Computer / Freeze Pod / Door ESP (enable/disable + cleanup)
---  - Gray skin, White Brick texture, Snow texture (toggleable + restore)
+-- FTF ESP Script — Stable full script (fixed execution issues)
+-- Features:
+--  - Center-only loading panel (no full-screen gray overlay)
+--  - Toast hint
+--  - Minimize button (minimizes to an icon image) + icon restores menu
+--  - Mobile quick-open button (for touch devices)
+--  - Menu toggle with "K" (keyboard) still works
+--  - ESP: Players, Computers, Freeze Pods, Doors (enable/disable + cleanup)
+--  - Textures: Gray skin, White Brick, Snow (toggleable + restore)
 --  - Down ragdoll timer (toggleable)
---  - Teleport tab (dynamic)
---  - Modern UI: non-blocking loading panel, toast hint, minimize icon (avatar headshot if available), mobile toggle
--- NOTE: set ICON_IMAGE_ID to your uploaded Roblox asset id to use a static fallback image. The minimized icon will be set to the local player's headshot at runtime.
+--  - Teleport tab listing players dynamically
+-- NOTE: Set ICON_IMAGE_ID to your uploaded Roblox asset id (string or number) to show the minimize icon image.
 
 -- ===== CONFIG =====
 local ICON_IMAGE_ID = "" -- e.g. "1234567890"
@@ -25,17 +27,28 @@ local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:FindFirstChild("PlayerGui") or LocalPlayer:WaitForChild("PlayerGui")
 
--- Clean previous GUIs
-for _,v in pairs(CoreGui:GetChildren()) do if v.Name == "FTF_ESP_GUI_DAVID" then pcall(function() v:Destroy() end) end end
-for _,v in pairs(PlayerGui:GetChildren()) do if v.Name == "FTF_ESP_GUI_DAVID" then pcall(function() v:Destroy() end) end end
+-- Cleanup previous GUIs
+for _,v in pairs(CoreGui:GetChildren()) do
+    if v.Name == "FTF_ESP_GUI_DAVID" then
+        pcall(function() v:Destroy() end)
+    end
+end
+for _,v in pairs(PlayerGui:GetChildren()) do
+    if v.Name == "FTF_ESP_GUI_DAVID" then
+        pcall(function() v:Destroy() end)
+    end
+end
 
 -- Root GUI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "FTF_ESP_GUI_DAVID"
 ScreenGui.ResetOnSpawn = false
 ScreenGui.IgnoreGuiInset = true
+-- try CoreGui first (pcall), otherwise PlayerGui
 pcall(function() ScreenGui.Parent = CoreGui end)
-if not ScreenGui.Parent or ScreenGui.Parent ~= CoreGui then ScreenGui.Parent = PlayerGui end
+if not ScreenGui.Parent or ScreenGui.Parent ~= CoreGui then
+    ScreenGui.Parent = PlayerGui
+end
 
 local function safeDestroy(obj)
     if obj and obj.Parent then
@@ -43,13 +56,14 @@ local function safeDestroy(obj)
     end
 end
 
--- ============================================================================
--- CORE FEATURES (enable/disable implementations)
--- ============================================================================
+-- =====================================
+-- FEATURES: variables + functions
+-- =====================================
+
 -- PLAYER ESP
 local PlayerESPActive = false
-local playerHighlights = {}
-local playerNameTags = {}
+local playerHighlights = {}    -- [player] = Highlight
+local playerNameTags = {}      -- [player] = BillboardGui
 local playerAddedConn, playerRemovingConn
 
 local function isBeast(player)
@@ -59,15 +73,17 @@ end
 local function createPlayerHighlight(player)
     if not player or player == LocalPlayer then return end
     if not player.Character then return end
-    if playerHighlights[player] then safeDestroy(playerHighlights[player]); playerHighlights[player] = nil end
+    if playerHighlights[player] then safeDestroy(playerHighlights[player]) end
     local fill, outline = Color3.fromRGB(52,215,101), Color3.fromRGB(170,255,200)
     if isBeast(player) then fill, outline = Color3.fromRGB(240,28,80), Color3.fromRGB(255,188,188) end
     local h = Instance.new("Highlight")
     h.Name = "[FTF_ESP_PlayerAura_DAVID]"
     h.Adornee = player.Character
     h.Parent = Workspace
-    h.FillColor = fill; h.OutlineColor = outline
-    h.FillTransparency = 0.12; h.OutlineTransparency = 0.04
+    h.FillColor = fill
+    h.OutlineColor = outline
+    h.FillTransparency = 0.12
+    h.OutlineTransparency = 0.04
     h.Enabled = true
     playerHighlights[player] = h
 end
@@ -79,14 +95,21 @@ end
 local function createPlayerNameTag(player)
     if not player or player == LocalPlayer then return end
     if not player.Character or not player.Character:FindFirstChild("Head") then return end
-    if playerNameTags[player] then safeDestroy(playerNameTags[player]); playerNameTags[player] = nil end
+    if playerNameTags[player] then safeDestroy(playerNameTags[player]) end
     local billboard = Instance.new("BillboardGui")
-    billboard.Name = "[FTFName]"; billboard.Adornee = player.Character.Head
-    billboard.Size = UDim2.new(0,110,0,20); billboard.StudsOffset = Vector3.new(0,2.18,0); billboard.AlwaysOnTop = true
+    billboard.Name = "[FTFName]"
+    billboard.Adornee = player.Character.Head
+    billboard.Size = UDim2.new(0,110,0,20)
+    billboard.StudsOffset = Vector3.new(0,2.18,0)
+    billboard.AlwaysOnTop = true
     billboard.Parent = ScreenGui
     local label = Instance.new("TextLabel", billboard)
-    label.Size = UDim2.new(1,0,1,0); label.BackgroundTransparency = 1; label.Font = Enum.Font.GothamSemibold
-    label.TextSize = 13; label.TextColor3 = Color3.fromRGB(190,210,230); label.Text = player.DisplayName or player.Name
+    label.Size = UDim2.new(1,0,1,0)
+    label.BackgroundTransparency = 1
+    label.Font = Enum.Font.GothamSemibold
+    label.TextSize = 13
+    label.TextColor3 = Color3.fromRGB(190,210,230)
+    label.Text = player.DisplayName or player.Name
     label.TextXAlignment = Enum.TextXAlignment.Center
     playerNameTags[player] = billboard
 end
@@ -95,19 +118,41 @@ local function removePlayerNameTag(player)
     if playerNameTags[player] then safeDestroy(playerNameTags[player]); playerNameTags[player] = nil end
 end
 
-local function RefreshPlayerESP()
-    for _,p in pairs(Players:GetPlayers()) do
-        if PlayerESPActive then createPlayerHighlight(p); createPlayerNameTag(p) else removePlayerHighlight(p); removePlayerNameTag(p) end
+local function enablePlayerESP()
+    if PlayerESPActive then return end
+    PlayerESPActive = true
+    for _,p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            createPlayerHighlight(p)
+            createPlayerNameTag(p)
+        end
+    end
+    if not playerAddedConn then
+        playerAddedConn = Players.PlayerAdded:Connect(function(p)
+            p.CharacterAdded:Connect(function()
+                task.wait(0.08)
+                if PlayerESPActive then createPlayerHighlight(p); createPlayerNameTag(p) end
+            end)
+            if PlayerESPActive and p.Character then createPlayerHighlight(p); createPlayerNameTag(p) end
+        end)
+    end
+    if not playerRemovingConn then
+        playerRemovingConn = Players.PlayerRemoving:Connect(function(p)
+            removePlayerHighlight(p)
+            removePlayerNameTag(p)
+        end)
     end
 end
 
-Players.PlayerAdded:Connect(function(p)
-    p.CharacterAdded:Connect(function() task.wait(0.08); if PlayerESPActive then createPlayerHighlight(p); createPlayerNameTag(p) end end)
-end)
-Players.PlayerRemoving:Connect(function(p) removePlayerHighlight(p); removePlayerNameTag(p) end)
+local function disablePlayerESP()
+    if not PlayerESPActive then return end
+    PlayerESPActive = false
+    for p,_ in pairs(playerHighlights) do removePlayerHighlight(p) end
+    for p,_ in pairs(playerNameTags) do removePlayerNameTag(p) end
+    if playerAddedConn then pcall(function() playerAddedConn:Disconnect() end); playerAddedConn = nil end
+    if playerRemovingConn then pcall(function() playerRemovingConn:Disconnect() end); playerRemovingConn = nil end
+end
 
-local function enablePlayerESP() PlayerESPActive = true; RefreshPlayerESP() end
-local function disablePlayerESP() PlayerESPActive = false; RefreshPlayerESP() end
 local function TogglePlayerESP() if PlayerESPActive then disablePlayerESP() else enablePlayerESP() end end
 
 -- COMPUTER ESP
@@ -121,11 +166,16 @@ end
 
 local function addComputerHighlight(model)
     if not model then return end
-    if compHighlights[model] then safeDestroy(compHighlights[model]); compHighlights[model] = nil end
+    if compHighlights[model] then safeDestroy(compHighlights[model]) end
     local h = Instance.new("Highlight")
-    h.Name = "[FTF_ESP_ComputerAura_DAVID]"; h.Adornee = model; h.Parent = Workspace
-    h.FillColor = Color3.fromRGB(77,164,255); h.OutlineColor = Color3.fromRGB(210,210,210)
-    h.FillTransparency = 0.10; h.OutlineTransparency = 0.03; h.Enabled = true
+    h.Name = "[FTF_ESP_ComputerAura_DAVID]"
+    h.Adornee = model
+    h.Parent = Workspace
+    h.FillColor = Color3.fromRGB(77,164,255)
+    h.OutlineColor = Color3.fromRGB(210,210,210)
+    h.FillTransparency = 0.10
+    h.OutlineTransparency = 0.03
+    h.Enabled = true
     compHighlights[model] = h
 end
 
@@ -133,14 +183,33 @@ local function removeComputerHighlight(model)
     if compHighlights[model] then safeDestroy(compHighlights[model]); compHighlights[model] = nil end
 end
 
-local function RefreshComputerESP()
-    for m,_ in pairs(compHighlights) do removeComputerHighlight(m) end
-    if not ComputerESPActive then return end
+local function enableComputerESP()
+    if ComputerESPActive then return end
+    ComputerESPActive = true
     for _,d in ipairs(Workspace:GetDescendants()) do if isComputerModel(d) then addComputerHighlight(d) end end
+    if not compDescAddedConn then
+        compDescAddedConn = Workspace.DescendantAdded:Connect(function(obj)
+            if not ComputerESPActive then return end
+            if isComputerModel(obj) then task.delay(0.05, function() addComputerHighlight(obj) end) end
+            if obj:IsA("BasePart") then
+                local mdl = obj:FindFirstAncestorWhichIsA("Model")
+                if mdl and isComputerModel(mdl) then task.delay(0.05, function() addComputerHighlight(mdl) end) end
+            end
+        end)
+    end
+    if not compDescRemovingConn then
+        compDescRemovingConn = Workspace.DescendantRemoving:Connect(function(obj) removeComputerHighlight(obj) end)
+    end
 end
 
-local function enableComputerESP() ComputerESPActive = true; RefreshComputerESP() end
-local function disableComputerESP() ComputerESPActive = false; RefreshComputerESP() end
+local function disableComputerESP()
+    if not ComputerESPActive then return end
+    ComputerESPActive = false
+    for m,_ in pairs(compHighlights) do removeComputerHighlight(m) end
+    if compDescAddedConn then pcall(function() compDescAddedConn:Disconnect() end); compDescAddedConn = nil end
+    if compDescRemovingConn then pcall(function() compDescRemovingConn:Disconnect() end); compDescRemovingConn = nil end
+end
+
 local function ToggleComputerESP() if ComputerESPActive then disableComputerESP() else enableComputerESP() end end
 
 -- FREEZE PODS
@@ -159,11 +228,16 @@ end
 
 local function addPodHighlight(model)
     if not model then return end
-    if podHighlights[model] then safeDestroy(podHighlights[model]); podHighlights[model] = nil end
+    if podHighlights[model] then safeDestroy(podHighlights[model]) end
     local h = Instance.new("Highlight")
-    h.Name = "[FTF_ESP_FreezePodAura_DAVID]"; h.Adornee = model; h.Parent = Workspace
-    h.FillColor = Color3.fromRGB(255,100,100); h.OutlineColor = Color3.fromRGB(200,40,40)
-    h.FillTransparency = 0.08; h.OutlineTransparency = 0.02; h.Enabled = true
+    h.Name = "[FTF_ESP_FreezePodAura_DAVID]"
+    h.Adornee = model
+    h.Parent = Workspace
+    h.FillColor = Color3.fromRGB(255,100,100)
+    h.OutlineColor = Color3.fromRGB(200,40,40)
+    h.FillTransparency = 0.08
+    h.OutlineTransparency = 0.02
+    h.Enabled = true
     podHighlights[model] = h
 end
 
@@ -171,14 +245,31 @@ local function removePodHighlight(model)
     if podHighlights[model] then safeDestroy(podHighlights[model]); podHighlights[model] = nil end
 end
 
-local function RefreshFreezePods()
-    for m,_ in pairs(podHighlights) do removePodHighlight(m) end
-    if not FreezePodsActive then return end
+local function enableFreezePodsESP()
+    if FreezePodsActive then return end
+    FreezePodsActive = true
     for _,d in ipairs(Workspace:GetDescendants()) do if isFreezePodModel(d) then addPodHighlight(d) end end
+    if not podDescAddedConn then
+        podDescAddedConn = Workspace.DescendantAdded:Connect(function(desc)
+            if not FreezePodsActive then return end
+            if isFreezePodModel(desc) then task.delay(0.05, function() addPodHighlight(desc) end) end
+            if desc:IsA("BasePart") then
+                local mdl = desc:FindFirstAncestorWhichIsA("Model")
+                if mdl and isFreezePodModel(mdl) then task.delay(0.05, function() addPodHighlight(mdl) end) end
+            end
+        end)
+    end
+    if not podDescRemovingConn then podDescRemovingConn = Workspace.DescendantRemoving:Connect(function(desc) removePodHighlight(desc) end) end
 end
 
-local function enableFreezePodsESP() FreezePodsActive = true; RefreshFreezePods() end
-local function disableFreezePodsESP() FreezePodsActive = false; RefreshFreezePods() end
+local function disableFreezePodsESP()
+    if not FreezePodsActive then return end
+    FreezePodsActive = false
+    for m,_ in pairs(podHighlights) do removePodHighlight(m) end
+    if podDescAddedConn then pcall(function() podDescAddedConn:Disconnect() end); podDescAddedConn = nil end
+    if podDescRemovingConn then pcall(function() podDescRemovingConn:Disconnect() end); podDescRemovingConn = nil end
+end
+
 local function ToggleFreezePodsESP() if FreezePodsActive then disableFreezePodsESP() else enableFreezePodsESP() end end
 
 -- DOOR AURA
@@ -198,10 +289,15 @@ end
 
 local function addDoorAura(model)
     if not model then return end
-    if doorHighlights[model] then safeDestroy(doorHighlights[model]); doorHighlights[model] = nil end
+    if doorHighlights[model] then safeDestroy(doorHighlights[model]) end
     local h = Instance.new("Highlight")
-    h.Name = "[FTF_ESP_DoorAura_DAVID]"; h.Adornee = model; h.Parent = Workspace
-    h.FillTransparency = 1; h.OutlineTransparency = 0; h.OutlineColor = Color3.fromRGB(255,230,120); h.Enabled = true
+    h.Name = "[FTF_ESP_DoorAura_DAVID]"
+    h.Adornee = model
+    h.Parent = Workspace
+    h.FillTransparency = 1
+    h.OutlineTransparency = 0
+    h.OutlineColor = Color3.fromRGB(255,230,120)
+    h.Enabled = true
     doorHighlights[model] = h
 end
 
@@ -209,17 +305,36 @@ local function removeDoorAura(model)
     if doorHighlights[model] then safeDestroy(doorHighlights[model]); doorHighlights[model] = nil end
 end
 
-local function RefreshDoorESP()
-    for m,_ in pairs(doorHighlights) do removeDoorAura(m) end
-    if not DoorESPActive then return end
-    for _,d in ipairs(Workspace:GetDescendants()) do if isDoorModel(d) then addDoorAura(d) end end
+local function enableDoorESP()
+    if DoorESPActive then return end
+    DoorESPActive = true
+    for _,d in ipairs(Workspace:GetDescendants()) do if d:IsA("Model") and isDoorModel(d) then addDoorAura(d) end end
+    if not doorDescAddedConn then
+        doorDescAddedConn = Workspace.DescendantAdded:Connect(function(desc)
+            if not DoorESPActive then return end
+            if desc:IsA("Model") and isDoorModel(desc) then task.delay(0.04, function() addDoorAura(desc) end) end
+            if desc:IsA("BasePart") then local mdl = desc:FindFirstAncestorWhichIsA("Model"); if mdl and isDoorModel(mdl) then task.delay(0.04, function() addDoorAura(mdl) end) end end
+        end)
+    end
+    if not doorDescRemovingConn then
+        doorDescRemovingConn = Workspace.DescendantRemoving:Connect(function(desc)
+            if desc:IsA("Model") and doorHighlights[desc] then removeDoorAura(desc) end
+            if desc:IsA("BasePart") then local mdl = desc:FindFirstAncestorWhichIsA("Model"); if mdl and doorHighlights[mdl] then removeDoorAura(mdl) end end
+        end)
+    end
 end
 
-local function enableDoorESP() DoorESPActive = true; RefreshDoorESP() end
-local function disableDoorESP() DoorESPActive = false; RefreshDoorESP() end
+local function disableDoorESP()
+    if not DoorESPActive then return end
+    DoorESPActive = false
+    for m,_ in pairs(doorHighlights) do removeDoorAura(m) end
+    if doorDescAddedConn then pcall(function() doorDescAddedConn:Disconnect() end); doorDescAddedConn = nil end
+    if doorDescRemovingConn then pcall(function() doorDescRemovingConn:Disconnect() end); doorDescRemovingConn = nil end
+end
+
 local function ToggleDoorESP() if DoorESPActive then disableDoorESP() else enableDoorESP() end end
 
--- DOWN TIMER (Ragdoll) — code kept as in previous versions (omitted repeated comments)
+-- DOWN TIMER (Ragdoll)
 local DownTimerActive = false
 local DOWN_TIME = 28
 local ragdollBillboards = {}
@@ -229,10 +344,14 @@ local bottomUI = {}
 local function createRagdollBillboardFor(player)
     if ragdollBillboards[player] then return ragdollBillboards[player] end
     if not player.Character then return nil end
-    local head = player.Character:FindFirstChild("Head") if not head then return nil end
+    local head = player.Character:FindFirstChild("Head")
+    if not head then return nil end
     local billboard = Instance.new("BillboardGui", ScreenGui)
-    billboard.Name = "[FTF_RagdollTimer]"; billboard.Adornee = head
-    billboard.Size = UDim2.new(0,140,0,44); billboard.StudsOffset = Vector3.new(0,3.2,0); billboard.AlwaysOnTop = true
+    billboard.Name = "[FTF_RagdollTimer]"
+    billboard.Adornee = head
+    billboard.Size = UDim2.new(0,140,0,44)
+    billboard.StudsOffset = Vector3.new(0,3.2,0)
+    billboard.AlwaysOnTop = true
     local bg = Instance.new("Frame", billboard); bg.Size = UDim2.new(1,0,1,0); bg.BackgroundColor3 = Color3.fromRGB(24,24,28)
     local corner = Instance.new("UICorner", bg); corner.CornerRadius = UDim.new(0,12)
     local txt = Instance.new("TextLabel", bg); txt.Size = UDim2.new(1,-16,1,-16); txt.Position = UDim2.new(0,8,0,6)
@@ -246,7 +365,10 @@ local function createRagdollBillboardFor(player)
 end
 
 local function removeRagdollBillboard(player)
-    if ragdollBillboards[player] then if ragdollBillboards[player].gui and ragdollBillboards[player].gui.Parent then safeDestroy(ragdollBillboards[player].gui) end ragdollBillboards[player] = nil end
+    if ragdollBillboards[player] then
+        if ragdollBillboards[player].gui and ragdollBillboards[player].gui.Parent then safeDestroy(ragdollBillboards[player].gui) end
+        ragdollBillboards[player] = nil
+    end
 end
 
 local function updateBottomRightFor(player, endTime)
@@ -323,298 +445,11 @@ local function ToggleDownTimer()
     end
 end
 
--- ============================================================================
--- TEXTURE OPTIONS: Remove Fog & Remove Textures (toggleable with restore)
--- ============================================================================
-
--- REMOVE FOG
-local RemoveFogActive = false
-local removeFogBackup = nil
-
-local function enableRemoveFog()
-    if RemoveFogActive then return end
-    -- Backup lighting values we will change
-    removeFogBackup = {
-        FogEnd = Lighting.FogEnd,
-        FogStart = Lighting.FogStart,
-        ClockTime = Lighting.ClockTime,
-        Brightness = Lighting.Brightness,
-        GlobalShadows = Lighting.GlobalShadows
-    }
-    -- Apply requested changes
-    pcall(function()
-        Lighting.FogEnd = 100000
-        Lighting.FogStart = 0
-        Lighting.ClockTime = 14
-        Lighting.Brightness = 2
-        Lighting.GlobalShadows = false
-    end)
-    RemoveFogActive = true
-end
-
-local function disableRemoveFog()
-    if not RemoveFogActive then return end
-    -- Restore lighting values
-    if removeFogBackup then
-        pcall(function()
-            if removeFogBackup.FogEnd ~= nil then Lighting.FogEnd = removeFogBackup.FogEnd end
-            if removeFogBackup.FogStart ~= nil then Lighting.FogStart = removeFogBackup.FogStart end
-            if removeFogBackup.ClockTime ~= nil then Lighting.ClockTime = removeFogBackup.ClockTime end
-            if removeFogBackup.Brightness ~= nil then Lighting.Brightness = removeFogBackup.Brightness end
-            if removeFogBackup.GlobalShadows ~= nil then Lighting.GlobalShadows = removeFogBackup.GlobalShadows end
-        end)
-    end
-    removeFogBackup = nil
-    RemoveFogActive = false
-end
-
-local function ToggleRemoveFog() if RemoveFogActive then disableRemoveFog() else enableRemoveFog() end end
-
--- REMOVE TEXTURES (heavy optimization) with backups so we can restore
-local RemoveTexturesActive = false
-
--- Backups
-local rt_backup_parts = {}      -- [part] = {Material,Reflectance}
-local rt_backup_decals = {}     -- [decal] = Transparency
-local rt_backup_particles = {}  -- [emitter] = {Lifetime}
-local rt_backup_explosions = {} -- [explosion] = {BlastPressure,BlastRadius}
-local rt_backup_effects = {}    -- [effect] = Enabled
-local rt_backup_meshparts = {}  -- [meshpart] = {Material,Reflectance,TextureID}
-local rt_backup_terrain = {}
-local rt_backup_lighting = {}
-local rt_backup_quality = nil
-
-local rt_desc_added_conn = nil
-
--- Helper to backup part props
-local function rt_store_part(part)
-    if not part or not part:IsA("BasePart") then return end
-    if rt_backup_parts[part] then return end
-    rt_backup_parts[part] = { Material = part.Material, Reflectance = part.Reflectance }
-end
-
-local function rt_store_meshpart(mp)
-    if not mp or not mp:IsA("MeshPart") then return end
-    if rt_backup_meshparts[mp] then return end
-    rt_backup_meshparts[mp] = { Material = mp.Material, Reflectance = mp.Reflectance, TextureID = mp.TextureID }
-end
-
-local function rt_store_decal(d)
-    if not d or (not d:IsA("Decal" ) and not d:IsA("Texture")) then return end
-    if rt_backup_decals[d] then return end
-    rt_backup_decals[d] = d.Transparency
-end
-
-local function rt_store_particle(e)
-    if not e or (not e:IsA("ParticleEmitter") and not e:IsA("Trail")) then return end
-    if rt_backup_particles[e] then return end
-    -- Trail does not have Lifetime property but Lifetime is a NumberRange on ParticleEmitter; we store Lifetime for ParticleEmitter and for Trail store Lifetime if exists
-    if e:IsA("ParticleEmitter") then
-        rt_backup_particles[e] = { Lifetime = e.Lifetime }
-    elseif e:IsA("Trail") then
-        -- Trail has Lifetime property as NumberRange
-        rt_backup_particles[e] = { Lifetime = e.Lifetime }
-    end
-end
-
-local function rt_store_explosion(ex)
-    if not ex or not ex:IsA("Explosion") then return end
-    if rt_backup_explosions[ex] then return end
-    rt_backup_explosions[ex] = { BlastPressure = ex.BlastPressure, BlastRadius = ex.BlastRadius }
-end
-
-local function rt_store_effect(e)
-    if not e then return end
-    if rt_backup_effects[e] then return end
-    if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
-        rt_backup_effects[e] = e.Enabled
-    end
-end
-
-local function rt_apply_to_instance(v)
-    -- apply transformations per provided script
-    if v:IsA("Part") or v:IsA("UnionOperation") or v:IsA("CornerWedgePart") or v:IsA("TrussPart") then
-        rt_store_part(v)
-        pcall(function() v.Material = Enum.Material.Plastic; v.Reflectance = 0 end)
-    elseif (v:IsA("Decal") or v:IsA("Texture")) then
-        rt_store_decal(v)
-        pcall(function() v.Transparency = 1 end)
-    elseif v:IsA("ParticleEmitter") or v:IsA("Trail") then
-        rt_store_particle(v)
-        pcall(function() v.Lifetime = NumberRange.new(0) end)
-    elseif v:IsA("Explosion") then
-        rt_store_explosion(v)
-        pcall(function() v.BlastPressure = 1; v.BlastRadius = 1 end)
-    elseif v:IsA("Fire") or v:IsA("SpotLight") or v:IsA("Smoke") then
-        -- store Enabled if exists
-        rt_store_effect(v)
-        pcall(function() v.Enabled = false end)
-    elseif v:IsA("MeshPart") then
-        rt_store_meshpart(v)
-        pcall(function() v.Material = Enum.Material.Plastic; v.Reflectance = 0; v.TextureID = "rbxassetid://10385902758728957" end)
-    end
-end
-
-local function rt_apply_to_lighting_child(e)
-    if not e then return end
-    if e:IsA("BlurEffect") or e:IsA("SunRaysEffect") or e:IsA("ColorCorrectionEffect") or e:IsA("BloomEffect") or e:IsA("DepthOfFieldEffect") then
-        rt_store_effect(e)
-        pcall(function() e.Enabled = false end)
-    end
-end
-
-local function enableRemoveTextures()
-    if RemoveTexturesActive then return end
-    -- Backup terrain & lighting properties
-    rt_backup_terrain = {
-        WaterWaveSize = Workspace.Terrain.WaterWaveSize,
-        WaterWaveSpeed = Workspace.Terrain.WaterWaveSpeed,
-        WaterReflectance = Workspace.Terrain.WaterReflectance,
-        WaterTransparency = Workspace.Terrain.WaterTransparency
-    }
-    rt_backup_lighting = {
-        GlobalShadows = Lighting.GlobalShadows,
-        FogEnd = Lighting.FogEnd,
-        Brightness = Lighting.Brightness
-    }
-    -- Backup quality level
-    local ok, q = pcall(function() return settings().Rendering.QualityLevel end)
-    if ok then rt_backup_quality = q end
-
-    -- apply terrain changes
-    pcall(function()
-        local t = Workspace.Terrain
-        t.WaterWaveSize = 0
-        t.WaterWaveSpeed = 0
-        t.WaterReflectance = 0
-        t.WaterTransparency = 0
-    end)
-
-    -- lighting tweaks
-    pcall(function()
-        Lighting.GlobalShadows = false
-        Lighting.FogEnd = 9e9
-        Lighting.Brightness = 0
-    end)
-
-    -- lower quality level (store previous above)
-    pcall(function() settings().Rendering.QualityLevel = "Level01" end)
-
-    -- iterate through descendants and apply replacements (with backups)
-    local desc = Workspace:GetDescendants()
-    for i = 1, #desc do
-        local v = desc[i]
-        rt_apply_to_instance(v)
-    end
-
-    -- lighting children
-    local children = Lighting:GetChildren()
-    for i = 1, #children do
-        local e = children[i]
-        rt_apply_to_lighting_child(e)
-    end
-
-    -- After applying to existing, connect DescendantAdded to modify new instances while active
-    rt_desc_added_conn = Workspace.DescendantAdded:Connect(function(v)
-        if not RemoveTexturesActive then return end
-        -- apply modifications to newly added instances
-        task.defer(function() rt_apply_to_instance(v) end)
-    end)
-
-    RemoveTexturesActive = true
-end
-
-local function disableRemoveTextures()
-    if not RemoveTexturesActive then return end
-    -- Disconnect listener
-    if rt_desc_added_conn then pcall(function() rt_desc_added_conn:Disconnect() end); rt_desc_added_conn = nil end
-
-    -- Restore parts
-    for part, props in pairs(rt_backup_parts) do
-        if part and part.Parent then
-            pcall(function() if props.Material then part.Material = props.Material end; if props.Reflectance then part.Reflectance = props.Reflectance end end)
-        end
-    end
-    rt_backup_parts = {}
-
-    -- Restore meshparts
-    for mp, props in pairs(rt_backup_meshparts) do
-        if mp and mp.Parent then
-            pcall(function()
-                if props.Material then mp.Material = props.Material end
-                if props.Reflectance then mp.Reflectance = props.Reflectance end
-                if props.TextureID then mp.TextureID = props.TextureID end
-            end)
-        end
-    end
-    rt_backup_meshparts = {}
-
-    -- Restore decals/textures transparency
-    for d, tr in pairs(rt_backup_decals) do
-        if d and d.Parent then pcall(function() d.Transparency = tr end) end
-    end
-    rt_backup_decals = {}
-
-    -- Restore particle lifetimes
-    for e, info in pairs(rt_backup_particles) do
-        if e and e.Parent then
-            pcall(function() e.Lifetime = info.Lifetime end)
-        end
-    end
-    rt_backup_particles = {}
-
-    -- Restore explosions
-    for ex, props in pairs(rt_backup_explosions) do
-        if ex and ex.Parent then pcall(function() if props.BlastPressure then ex.BlastPressure = props.BlastPressure end; if props.BlastRadius then ex.BlastRadius = props.BlastRadius end end) end
-    end
-    rt_backup_explosions = {}
-
-    -- Restore effects enabled states
-    for e, enabled in pairs(rt_backup_effects) do
-        if e and e.Parent then pcall(function() e.Enabled = enabled end) end
-    end
-    rt_backup_effects = {}
-
-    -- Restore terrain
-    if rt_backup_terrain then
-        pcall(function()
-            local t = Workspace.Terrain
-            if rt_backup_terrain.WaterWaveSize ~= nil then t.WaterWaveSize = rt_backup_terrain.WaterWaveSize end
-            if rt_backup_terrain.WaterWaveSpeed ~= nil then t.WaterWaveSpeed = rt_backup_terrain.WaterWaveSpeed end
-            if rt_backup_terrain.WaterReflectance ~= nil then t.WaterReflectance = rt_backup_terrain.WaterReflectance end
-            if rt_backup_terrain.WaterTransparency ~= nil then t.WaterTransparency = rt_backup_terrain.WaterTransparency end
-        end)
-    end
-    rt_backup_terrain = {}
-
-    -- Restore lighting
-    if rt_backup_lighting then
-        pcall(function()
-            if rt_backup_lighting.GlobalShadows ~= nil then Lighting.GlobalShadows = rt_backup_lighting.GlobalShadows end
-            if rt_backup_lighting.FogEnd ~= nil then Lighting.FogEnd = rt_backup_lighting.FogEnd end
-            if rt_backup_lighting.Brightness ~= nil then Lighting.Brightness = rt_backup_lighting.Brightness end
-        end)
-    end
-    rt_backup_lighting = {}
-
-    -- Restore quality level
-    if rt_backup_quality then pcall(function() settings().Rendering.QualityLevel = rt_backup_quality end) end
-    rt_backup_quality = nil
-
-    RemoveTexturesActive = false
-end
-
-local function ToggleRemoveTextures() if RemoveTexturesActive then disableRemoveTextures() else enableRemoveTextures() end end
-
--- ============================================================================
--- OTHER TEXTURE FEATURES (Gray skin / White Brick / Snow)
--- (Implementations left as before — already included in previous versions)
--- ============================================================================
-
--- Gray skin
+-- TEXTURES / GRAY SKIN / SNOW
 local GraySkinActive = false
 local skinBackup = {}
 local grayConns = {}
+
 local function storePartOriginal(part, store)
     if not part or (not part:IsA("BasePart") and not part:IsA("MeshPart")) then return end
     if store[part] then return end
@@ -622,6 +457,7 @@ local function storePartOriginal(part, store)
     local okM, mat = pcall(function() return part.Material end)
     store[part] = { Color = (okC and col) or nil, Material = (okM and mat) or nil }
 end
+
 local function applyGrayToCharacter(player)
     if not player or not player.Character then return end
     local map = skinBackup[player] or {}
@@ -639,6 +475,7 @@ local function applyGrayToCharacter(player)
         end
     end
 end
+
 local function restoreGrayForPlayer(player)
     local map = skinBackup[player]; if not map then return end
     for part, props in pairs(map) do
@@ -648,6 +485,7 @@ local function restoreGrayForPlayer(player)
     end
     skinBackup[player] = nil
 end
+
 local function enableGraySkin()
     if GraySkinActive then return end
     GraySkinActive = true
@@ -661,6 +499,7 @@ local function enableGraySkin()
         grayConns._playerAddedConn = Players.PlayerAdded:Connect(function(p) if p ~= LocalPlayer and GraySkinActive then if p.Character then applyGrayToCharacter(p) end; if not grayConns[p] then grayConns[p] = p.CharacterAdded:Connect(function() task.wait(0.06); if GraySkinActive then applyGrayToCharacter(p) end end) end end end)
     end
 end
+
 local function disableGraySkin()
     if not GraySkinActive then return end
     GraySkinActive = false
@@ -668,18 +507,21 @@ local function disableGraySkin()
     skinBackup = {}
     for k,conn in pairs(grayConns) do pcall(function() conn:Disconnect() end); grayConns[k] = nil end
 end
+
 local function ToggleGraySkin() if GraySkinActive then disableGraySkin() else enableGraySkin() end end
 
--- White Brick Texture
+-- White brick texture
 local TextureActive = false
 local textureBackup = {}
 local textureDescendantConn = nil
+
 local function isPartPlayerCharacter(part)
     if not part then return false end
     local model = part:FindFirstAncestorWhichIsA("Model")
     if model then return Players:GetPlayerFromCharacter(model) ~= nil end
     return false
 end
+
 local function saveAndApplyWhiteBrick(part)
     if not part or not part:IsA("BasePart") then return end
     if isPartPlayerCharacter(part) then return end
@@ -689,6 +531,7 @@ local function saveAndApplyWhiteBrick(part)
     textureBackup[part] = { Color = (okC and col) or nil, Material = (okM and mat) or nil }
     pcall(function() part.Material = Enum.Material.Brick; part.Color = Color3.fromRGB(255,255,255) end)
 end
+
 local function applyWhiteBrickToAll()
     local desc = Workspace:GetDescendants()
     local batch = 0
@@ -701,10 +544,12 @@ local function applyWhiteBrickToAll()
         end
     end
 end
+
 local function onWorkspaceDescendantAdded(desc)
     if not TextureActive then return end
     if desc and desc:IsA("BasePart") and not isPartPlayerCharacter(desc) then task.defer(function() saveAndApplyWhiteBrick(desc) end) end
 end
+
 local function restoreTextures()
     local entries = {}
     for p, props in pairs(textureBackup) do entries[#entries+1] = {p=p, props=props} end
@@ -722,57 +567,164 @@ local function restoreTextures()
     end
     textureBackup = {}
 end
+
 local function enableTextureToggle()
     if TextureActive then return end
     TextureActive = true
     task.spawn(applyWhiteBrickToAll)
     textureDescendantConn = Workspace.DescendantAdded:Connect(onWorkspaceDescendantAdded)
 end
+
 local function disableTextureToggle()
     if not TextureActive then return end
     TextureActive = false
     if textureDescendantConn then pcall(function() textureDescendantConn:Disconnect() end); textureDescendantConn = nil end
     task.spawn(restoreTextures)
 end
+
 local function ToggleTexture() if TextureActive then disableTextureToggle() else enableTextureToggle() end end
 
--- Snow texture (kept from previous version)
+-- Snow texture (toggle)
 local SnowActive = false
 local snowBackupParts = {}
 local snowPartConn = nil
 local snowLightingBackup = nil
 local snowSkyBackup = {}
 local createdSnowSky = nil
-local function backupLighting() ... end -- placeholder removed to keep brevity in message; actual functions implemented below
--- We'll provide the full Snow functions after UI to avoid truncation issues.
 
--- ============================================================================
--- UI: Loading panel (center only), toast, minimized icon (avatar headshot), mobile toggle, main menu
--- ============================================================================
+local function backupLighting()
+    local ok, amb = pcall(function() return Lighting.Ambient end)
+    local ok2, outAmb = pcall(function() return Lighting.OutdoorAmbient end)
+    local ok3, fogc = pcall(function() return Lighting.FogColor end)
+    local ok4, foge = pcall(function() return Lighting.FogEnd end)
+    local ok5, bright = pcall(function() return Lighting.Brightness end)
+    local ok6, clock = pcall(function() return Lighting.ClockTime end)
+    local ok7, envDiff = pcall(function() return Lighting.EnvironmentDiffuseScale end)
+    local ok8, envSpec = pcall(function() return Lighting.EnvironmentSpecularScale end)
+    snowLightingBackup = {
+        Ambient = (ok and amb) or nil,
+        OutdoorAmbient = (ok2 and outAmb) or nil,
+        FogColor = (ok3 and fogc) or nil,
+        FogEnd = (ok4 and foge) or nil,
+        Brightness = (ok5 and bright) or nil,
+        ClockTime = (ok6 and clock) or nil,
+        EnvironmentDiffuseScale = (ok7 and envDiff) or nil,
+        EnvironmentSpecularScale = (ok8 and envSpec) or nil,
+    }
+end
+
+local function restoreLighting()
+    if not snowLightingBackup then return end
+    pcall(function() if snowLightingBackup.Ambient then Lighting.Ambient = snowLightingBackup.Ambient end end)
+    pcall(function() if snowLightingBackup.OutdoorAmbient then Lighting.OutdoorAmbient = snowLightingBackup.OutdoorAmbient end end)
+    pcall(function() if snowLightingBackup.FogColor then Lighting.FogColor = snowLightingBackup.FogColor end end)
+    pcall(function() if snowLightingBackup.FogEnd then Lighting.FogEnd = snowLightingBackup.FogEnd end end)
+    pcall(function() if snowLightingBackup.Brightness then Lighting.Brightness = snowLightingBackup.Brightness end end)
+    pcall(function() if snowLightingBackup.ClockTime then Lighting.ClockTime = snowLightingBackup.ClockTime end end)
+    pcall(function() if snowLightingBackup.EnvironmentDiffuseScale then Lighting.EnvironmentDiffuseScale = snowLightingBackup.EnvironmentDiffuseScale end end)
+    pcall(function() if snowLightingBackup.EnvironmentSpecularScale then Lighting.EnvironmentSpecularScale = snowLightingBackup.EnvironmentSpecularScale end end)
+    snowLightingBackup = nil
+end
+
+local function enableSnowTexture()
+    if SnowActive then return end
+    SnowActive = true
+    backupLighting()
+    for _,v in pairs(Lighting:GetChildren()) do
+        if v:IsA("Sky") then
+            pcall(function() table.insert(snowSkyBackup, v:Clone()) end)
+            pcall(function() v:Destroy() end)
+        end
+    end
+    for _, obj in pairs(Workspace:GetDescendants()) do
+        if obj:IsA("BasePart") then
+            local okC, col = pcall(function() return obj.Color end)
+            local okM, mat = pcall(function() return obj.Material end)
+            if not snowBackupParts[obj] then
+                snowBackupParts[obj] = { Color = (okC and col) or nil, Material = (okM and mat) or nil }
+            end
+            pcall(function() obj.Color = Color3.new(1,1,1); obj.Material = Enum.Material.SmoothPlastic end)
+        end
+    end
+    pcall(function()
+        Lighting.Ambient = Color3.new(1,1,1)
+        Lighting.OutdoorAmbient = Color3.new(1,1,1)
+        Lighting.FogColor = Color3.new(1,1,1)
+        Lighting.FogEnd = 100000
+        Lighting.Brightness = 2
+        Lighting.ClockTime = 12
+        Lighting.EnvironmentDiffuseScale = 1
+        Lighting.EnvironmentSpecularScale = 1
+    end)
+    local sky = Instance.new("Sky")
+    sky.SkyboxBk = ""; sky.SkyboxDn = ""; sky.SkyboxFt = ""; sky.SkyboxLf = ""; sky.SkyboxRt = ""; sky.SkyboxUp = ""
+    sky.Parent = Lighting
+    createdSnowSky = sky
+    snowPartConn = Workspace.DescendantAdded:Connect(function(desc)
+        if not SnowActive then return end
+        if desc and desc:IsA("BasePart") then
+            if not snowBackupParts[desc] then
+                local okC, col = pcall(function() return desc.Color end)
+                local okM, mat = pcall(function() return desc.Material end)
+                snowBackupParts[desc] = { Color = (okC and col) or nil, Material = (okM and mat) or nil }
+            end
+            pcall(function() desc.Color = Color3.new(1,1,1); desc.Material = Enum.Material.SmoothPlastic end)
+        end
+    end)
+end
+
+local function disableSnowTexture()
+    if not SnowActive then return end
+    SnowActive = false
+    if snowPartConn then pcall(function() snowPartConn:Disconnect() end); snowPartConn = nil end
+    for part, props in pairs(snowBackupParts) do
+        if part and part.Parent then
+            pcall(function()
+                if props.Material then part.Material = props.Material end
+                if props.Color then part.Color = props.Color end
+            end)
+        end
+    end
+    snowBackupParts = {}
+    if createdSnowSky and createdSnowSky.Parent then pcall(function() createdSnowSky:Destroy() end) end
+    createdSnowSky = nil
+    for _,cloneSky in ipairs(snowSkyBackup) do if cloneSky then pcall(function() cloneSky.Parent = Lighting end) end end
+    snowSkyBackup = {}
+    restoreLighting()
+end
+
+local function ToggleSnow() if SnowActive then disableSnowTexture() else enableSnowTexture() end end
+
+-- =====================================
+-- UI: loading panel (center-only), toast, minimize icon, mobile toggle, menu
+-- =====================================
 
 -- Loading panel
 local LoadingPanel = Instance.new("Frame", ScreenGui)
 LoadingPanel.Name = "FTF_LoadingPanel"
-LoadingPanel.Size = UDim2.new(0,420,0,120)
-LoadingPanel.Position = UDim2.new(0.5,-210,0.45,-60)
+LoadingPanel.Size = UDim2.new(0, 420, 0, 120)
+LoadingPanel.Position = UDim2.new(0.5, -210, 0.45, -60)
 LoadingPanel.BackgroundColor3 = Color3.fromRGB(18,18,20)
 LoadingPanel.BorderSizePixel = 0
 local lpCorner = Instance.new("UICorner", LoadingPanel); lpCorner.CornerRadius = UDim.new(0,14)
 local lpStroke = Instance.new("UIStroke", LoadingPanel); lpStroke.Color = Color3.fromRGB(40,40,48); lpStroke.Thickness = 1; lpStroke.Transparency = 0.3
+
 local lpTitle = Instance.new("TextLabel", LoadingPanel)
-lpTitle.Size = UDim2.new(1,-40,0,36); lpTitle.Position = UDim2.new(0,20,0,14)
+lpTitle.Size = UDim2.new(1, -40, 0, 36); lpTitle.Position = UDim2.new(0, 20, 0, 14)
 lpTitle.BackgroundTransparency = 1; lpTitle.Font = Enum.Font.FredokaOne; lpTitle.TextSize = 20
 lpTitle.TextColor3 = Color3.fromRGB(220,220,230); lpTitle.Text = "Loading FTF hub - By David"; lpTitle.TextXAlignment = Enum.TextXAlignment.Left
+
 local lpSub = Instance.new("TextLabel", LoadingPanel)
-lpSub.Size = UDim2.new(1,-40,0,18); lpSub.Position = UDim2.new(0,20,0,56)
+lpSub.Size = UDim2.new(1, -40, 0, 18); lpSub.Position = UDim2.new(0, 20, 0, 56)
 lpSub.BackgroundTransparency = 1; lpSub.Font = Enum.Font.Gotham; lpSub.TextSize = 12
 lpSub.TextColor3 = Color3.fromRGB(170,170,180); lpSub.Text = "Initializing..."; lpSub.TextXAlignment = Enum.TextXAlignment.Left
+
 local spinner = Instance.new("Frame", LoadingPanel)
-spinner.Size = UDim2.new(0,40,0,40); spinner.Position = UDim2.new(1,-64,0,20)
+spinner.Size = UDim2.new(0, 40, 0, 40); spinner.Position = UDim2.new(1, -64, 0, 20)
 spinner.BackgroundColor3 = Color3.fromRGB(24,24,26)
 local spCorner = Instance.new("UICorner", spinner); spCorner.CornerRadius = UDim.new(0,10)
 local inner = Instance.new("Frame", spinner)
-inner.Size = UDim2.new(0,24,0,24); inner.Position = UDim2.new(0.5,-12,0.5,-12)
+inner.Size = UDim2.new(0, 24, 0, 24); inner.Position = UDim2.new(0.5, -12, 0.5, -12)
 inner.BackgroundColor3 = Color3.fromRGB(60,160,255)
 local innerCorner = Instance.new("UICorner", inner); innerCorner.CornerRadius = UDim.new(0,8)
 local spinTween = TweenService:Create(spinner, TweenInfo.new(1.2, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut, -1, true), {Rotation = 360})
@@ -781,124 +733,131 @@ spinTween:Play()
 -- Toast
 local Toast = Instance.new("Frame", ScreenGui)
 Toast.Name = "FTF_Toast"
-Toast.Size = UDim2.new(0,360,0,46)
-Toast.Position = UDim2.new(0.5,-180,0.02,0)
+Toast.Size = UDim2.new(0, 360, 0, 46)
+Toast.Position = UDim2.new(0.5, -180, 0.02, 0)
 Toast.BackgroundColor3 = Color3.fromRGB(20,20,22)
+Toast.BorderSizePixel = 0
 Toast.Visible = false
 local toastCorner = Instance.new("UICorner", Toast); toastCorner.CornerRadius = UDim.new(0,12)
 local toastLabel = Instance.new("TextLabel", Toast)
-toastLabel.Size = UDim2.new(1,-48,1,0); toastLabel.Position = UDim2.new(0,12,0,0)
+toastLabel.Size = UDim2.new(1, -48, 1, 0); toastLabel.Position = UDim2.new(0, 12, 0, 0)
 toastLabel.BackgroundTransparency = 1; toastLabel.Font = Enum.Font.GothamSemibold; toastLabel.TextSize = 14
 toastLabel.TextColor3 = Color3.fromRGB(220,220,220); toastLabel.Text = "Use the letter K on your keyboard to open the MENU."; toastLabel.TextXAlignment = Enum.TextXAlignment.Left
 local toastClose = Instance.new("TextButton", Toast)
-toastClose.Size = UDim2.new(0,28,0,28); toastClose.Position = UDim2.new(1,-40,0.5,-14)
+toastClose.Size = UDim2.new(0, 28, 0, 28); toastClose.Position = UDim2.new(1, -40, 0.5, -14)
 toastClose.Text = "✕"; toastClose.Font = Enum.Font.Gotham; toastClose.TextSize = 16; toastClose.BackgroundColor3 = Color3.fromRGB(16,16,16)
 local tcCorner = Instance.new("UICorner", toastClose); tcCorner.CornerRadius = UDim.new(0,8)
 toastClose.MouseButton1Click:Connect(function() Toast.Visible = false end)
 
--- Minimized icon (ImageButton) - will be updated to local player's headshot
+-- Minimized icon
 local MinimizedIcon = Instance.new("ImageButton", ScreenGui)
 MinimizedIcon.Name = "FTF_MinimizedIcon"
-MinimizedIcon.Size = UDim2.new(0,56,0,56)
-MinimizedIcon.Position = UDim2.new(0.02,0,0.06,0)
+MinimizedIcon.Size = UDim2.new(0, 56, 0, 56)
+MinimizedIcon.Position = UDim2.new(0.02, 0, 0.06, 0)
 MinimizedIcon.BackgroundColor3 = Color3.fromRGB(24,24,26)
 MinimizedIcon.BorderSizePixel = 0
 MinimizedIcon.Visible = false
+MinimizedIcon.AutoButtonColor = true
 local miCorner = Instance.new("UICorner", MinimizedIcon); miCorner.CornerRadius = UDim.new(0,12)
 local miStroke = Instance.new("UIStroke", MinimizedIcon); miStroke.Color = Color3.fromRGB(30,80,130); miStroke.Transparency = 0.7
-if tostring(ICON_IMAGE_ID) ~= "" then MinimizedIcon.Image = "rbxassetid://"..tostring(ICON_IMAGE_ID) end
-
--- update minimized icon with avatar headshot
-task.defer(function()
-    pcall(function()
-        if Players and Players:GetUserThumbnailAsync then
-            local ok, url = pcall(function()
-                return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-            end)
-            if ok and url and url ~= "" then
-                MinimizedIcon.Image = url
-            end
-        end
-    end)
-end)
-LocalPlayer.CharacterAppearanceLoaded:Connect(function()
-    task.delay(0.4, function()
-        pcall(function()
-            local ok, url = pcall(function()
-                return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size420x420)
-            end)
-            if ok and url and url ~= "" then MinimizedIcon.Image = url end
-        end)
-    end)
-end)
+if tostring(ICON_IMAGE_ID) ~= "" then
+    MinimizedIcon.Image = "rbxassetid://" .. tostring(ICON_IMAGE_ID)
+end
 
 -- Mobile quick toggle
 local MobileToggle = Instance.new("TextButton", ScreenGui)
 MobileToggle.Name = "FTF_MobileToggle"
-MobileToggle.Size = UDim2.new(0,56,0,56)
-MobileToggle.Position = UDim2.new(0.02,68,0.06,0)
+MobileToggle.Size = UDim2.new(0, 56, 0, 56)
+MobileToggle.Position = UDim2.new(0.02, 68, 0.06, 0)
 MobileToggle.BackgroundColor3 = Color3.fromRGB(24,24,26)
 MobileToggle.BorderSizePixel = 0
-MobileToggle.Text = "☰"; MobileToggle.Font = Enum.Font.GothamBold; MobileToggle.TextColor3 = Color3.fromRGB(220,220,220)
+MobileToggle.Text = "☰"
+MobileToggle.Font = Enum.Font.GothamBold
+MobileToggle.TextColor3 = Color3.fromRGB(220,220,220)
 MobileToggle.Visible = UserInputService.TouchEnabled and true or false
 local mtCorner = Instance.new("UICorner", MobileToggle); mtCorner.CornerRadius = UDim.new(0,12)
 local mtStroke = Instance.new("UIStroke", MobileToggle); mtStroke.Color = Color3.fromRGB(30,80,130); mtStroke.Transparency = 0.75
 
--- Main menu UI (tabs, search, content scroll)
-local MENU_WIDTH = 520; local MENU_HEIGHT = 380
+-- Main menu
+local MENU_WIDTH = 520
+local MENU_HEIGHT = 380
 local MainFrame = Instance.new("Frame", ScreenGui)
-MainFrame.Name = "FTF_Main"; MainFrame.Size = UDim2.new(0,MENU_WIDTH,0,MENU_HEIGHT)
-MainFrame.Position = UDim2.new(0.5,-MENU_WIDTH/2,0.08,0)
-MainFrame.BackgroundColor3 = Color3.fromRGB(18,18,18); MainFrame.BorderSizePixel = 0; MainFrame.Visible = false
+MainFrame.Name = "FTF_Main"
+MainFrame.Size = UDim2.new(0, MENU_WIDTH, 0, MENU_HEIGHT)
+MainFrame.Position = UDim2.new(0.5, -MENU_WIDTH/2, 0.08, 0)
+MainFrame.BackgroundColor3 = Color3.fromRGB(18,18,18)
+MainFrame.BorderSizePixel = 0
+MainFrame.Visible = false
 local mfCorner = Instance.new("UICorner", MainFrame); mfCorner.CornerRadius = UDim.new(0,12)
 
 -- Titlebar
-local TitleBar = Instance.new("Frame", MainFrame); TitleBar.Size = UDim2.new(1,0,0,48); TitleBar.BackgroundTransparency = 1
-local TitleLbl = Instance.new("TextLabel", TitleBar); TitleLbl.Text = "FTF - David's ESP"; TitleLbl.Font = Enum.Font.GothamBold; TitleLbl.TextSize = 16
-TitleLbl.TextColor3 = Color3.fromRGB(220,220,220); TitleLbl.BackgroundTransparency = 1; TitleLbl.Position = UDim2.new(0,12,0,12); TitleLbl.Size = UDim2.new(0,260,0,24)
-local SearchBox = Instance.new("TextBox", TitleBar); SearchBox.Size = UDim2.new(0,220,0,28); SearchBox.Position = UDim2.new(1,-240,0,10)
-SearchBox.BackgroundColor3 = Color3.fromRGB(26,26,26); SearchBox.TextColor3 = Color3.fromRGB(200,200,200); SearchBox.ClearTextOnFocus = true
-local sbCorner = Instance.new("UICorner", SearchBox); sbCorner.CornerRadius = UDim.new(0,8)
+local TitleBar = Instance.new("Frame", MainFrame)
+TitleBar.Size = UDim2.new(1, 0, 0, 48)
+TitleBar.BackgroundTransparency = 1
+local TitleLbl = Instance.new("TextLabel", TitleBar)
+TitleLbl.Text = "FTF - David's ESP"; TitleLbl.Font = Enum.Font.GothamBold; TitleLbl.TextSize = 16
+TitleLbl.TextColor3 = Color3.fromRGB(220,220,220); TitleLbl.BackgroundTransparency = 1
+TitleLbl.Position = UDim2.new(0,12,0,12); TitleLbl.Size = UDim2.new(0,260,0,24); TitleLbl.TextXAlignment = Enum.TextXAlignment.Left
 
--- Minimize & Close buttons in titlebar
-local MinimizeBtn = Instance.new("TextButton", TitleBar); MinimizeBtn.Text = "—"; MinimizeBtn.Font = Enum.Font.GothamBold; MinimizeBtn.TextSize = 20
-MinimizeBtn.BackgroundTransparency = 1; MinimizeBtn.Size = UDim2.new(0,36,0,36); MinimizeBtn.Position = UDim2.new(1,-92,0,6); MinimizeBtn.TextColor3 = Color3.fromRGB(200,200,200)
-local CloseBtn = Instance.new("TextButton", TitleBar); CloseBtn.Text = "✕"; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 18
-CloseBtn.BackgroundTransparency = 1; CloseBtn.Size = UDim2.new(0,36,0,36); CloseBtn.Position = UDim2.new(1,-44,0,6); CloseBtn.TextColor3 = Color3.fromRGB(200,200,200)
+local SearchBox = Instance.new("TextBox", TitleBar)
+SearchBox.Size = UDim2.new(0, 220, 0, 28); SearchBox.Position = UDim2.new(1, -240, 0, 10)
+SearchBox.BackgroundColor3 = Color3.fromRGB(26,26,26); SearchBox.TextColor3 = Color3.fromRGB(200,200,200)
+SearchBox.PlaceholderText = ""; SearchBox.Text = ""; SearchBox.ClearTextOnFocus = true
+local sbCorner = Instance.new("UICorner", SearchBox); sbCorner.CornerRadius = UDim.new(0,8)
+local sbPadding = Instance.new("UIPadding", SearchBox); sbPadding.PaddingLeft = UDim.new(0,10)
+
+-- Minimize button (titlebar)
+local MinimizeBtn = Instance.new("TextButton", TitleBar)
+MinimizeBtn.Text = "—"; MinimizeBtn.Font = Enum.Font.GothamBold; MinimizeBtn.TextSize = 20
+MinimizeBtn.BackgroundTransparency = 1; MinimizeBtn.Size = UDim2.new(0,36,0,36); MinimizeBtn.Position = UDim2.new(1,-92,0,6)
+MinimizeBtn.TextColor3 = Color3.fromRGB(200,200,200); MinimizeBtn.AutoButtonColor = false
+
+-- Close (hide)
+local CloseBtn = Instance.new("TextButton", TitleBar)
+CloseBtn.Text = "✕"; CloseBtn.Font = Enum.Font.GothamBold; CloseBtn.TextSize = 18
+CloseBtn.BackgroundTransparency = 1; CloseBtn.Size = UDim2.new(0,36,0,36); CloseBtn.Position = UDim2.new(1,-44,0,6)
+CloseBtn.TextColor3 = Color3.fromRGB(200,200,200); CloseBtn.AutoButtonColor = false
 
 -- Tabs
-local TabsParent = Instance.new("Frame", MainFrame); TabsParent.Size = UDim2.new(1,-24,0,44); TabsParent.Position = UDim2.new(0,12,0,56); TabsParent.BackgroundTransparency = 1
+local TabsParent = Instance.new("Frame", MainFrame)
+TabsParent.Size = UDim2.new(1, -24, 0, 44); TabsParent.Position = UDim2.new(0,12,0,56); TabsParent.BackgroundTransparency = 1
 local tabNames = {"ESP","Textures","Timers","Teleport"}
-local tabPadding = 10; local tabCount = #tabNames; local tabAvailableWidth = MENU_WIDTH - 24
+local tabPadding = 10
+local tabCount = #tabNames
+local tabAvailableWidth = MENU_WIDTH - 24
 local tabWidth = math.max(80, math.floor((tabAvailableWidth - (tabPadding * (tabCount - 1))) / tabCount))
 local Tabs = {}
 for i,name in ipairs(tabNames) do
-    local x = (i-1)*(tabWidth + tabPadding)
+    local x = (i-1) * (tabWidth + tabPadding)
     local t = Instance.new("TextButton", TabsParent)
-    t.Size = UDim2.new(0,tabWidth,0,34); t.Position = UDim2.new(0,x,0,4)
+    t.Size = UDim2.new(0, tabWidth, 0, 34); t.Position = UDim2.new(0, x, 0, 4)
     t.Text = name; t.Font = Enum.Font.GothamSemibold; t.TextSize = 14; t.TextColor3 = Color3.fromRGB(200,200,200)
     t.BackgroundColor3 = Color3.fromRGB(28,28,28); t.AutoButtonColor = false
     local c = Instance.new("UICorner", t); c.CornerRadius = UDim.new(0,12)
     Tabs[name] = t
 end
+
 local TabESP = Tabs["ESP"]; local TabTextures = Tabs["Textures"]; local TabTimers = Tabs["Timers"]; local TabTeleport = Tabs["Teleport"]
 
 local ContentScroll = Instance.new("ScrollingFrame", MainFrame)
-ContentScroll.Name = "ContentScroll"; ContentScroll.Size = UDim2.new(1,-24,1,-120); ContentScroll.Position = UDim2.new(0,12,0,112)
+ContentScroll.Name = "ContentScroll"; ContentScroll.Size = UDim2.new(1, -24, 1, -120); ContentScroll.Position = UDim2.new(0,12,0,112)
 ContentScroll.BackgroundTransparency = 1; ContentScroll.BorderSizePixel = 0; ContentScroll.ScrollBarImageColor3 = Color3.fromRGB(75,75,75); ContentScroll.ScrollBarThickness = 8
-local contentLayout = Instance.new("UIListLayout", ContentScroll); contentLayout.SortOrder = Enum.SortOrder.LayoutOrder; contentLayout.Padding = UDim.new(0,10)
-contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+local contentLayout = Instance.new("UIListLayout", ContentScroll); contentLayout.SortOrder = Enum.SortOrder.LayoutOrder; contentLayout.Padding = UDim.new(0,10); contentLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 contentLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function() ContentScroll.CanvasSize = UDim2.new(0,0,0, contentLayout.AbsoluteContentSize.Y + 18) end)
 
--- UI creators (toggles / buttons)
+-- UI creators
 local function createToggleItem(parent, labelText, initial, onToggle)
-    local item = Instance.new("Frame", parent); item.Size = UDim2.new(0.95,0,0,44); item.BackgroundColor3 = Color3.fromRGB(28,28,28)
+    local item = Instance.new("Frame", parent)
+    item.Size = UDim2.new(0.95, 0, 0, 44); item.BackgroundColor3 = Color3.fromRGB(28,28,28); item.BorderSizePixel = 0
     local itemCorner = Instance.new("UICorner", item); itemCorner.CornerRadius = UDim.new(0,10)
-    local lbl = Instance.new("TextLabel", item); lbl.Size = UDim2.new(1,-120,1,0); lbl.Position = UDim2.new(0,12,0,0); lbl.BackgroundTransparency = 1
-    lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(210,210,210); lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Text = labelText
-    local sw = Instance.new("TextButton", item); sw.Size = UDim2.new(0,88,0,28); sw.Position = UDim2.new(1,-100,0.5,-14); sw.BackgroundColor3 = Color3.fromRGB(38,38,38); sw.AutoButtonColor = false
+    local lbl = Instance.new("TextLabel", item)
+    lbl.Size = UDim2.new(1, -120, 1, 0); lbl.Position = UDim2.new(0,12,0,0)
+    lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(210,210,210)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Text = labelText
+    local sw = Instance.new("TextButton", item); sw.Size = UDim2.new(0,88,0,28); sw.Position = UDim2.new(1, -100, 0.5, -14)
+    sw.BackgroundColor3 = Color3.fromRGB(38,38,38); sw.AutoButtonColor = false
     local swCorner = Instance.new("UICorner", sw); swCorner.CornerRadius = UDim.new(0,16)
-    local swBg = Instance.new("Frame", sw); swBg.Size = UDim2.new(1,-8,1,-8); swBg.Position = UDim2.new(0,4,0,4); swBg.BackgroundColor3 = Color3.fromRGB(60,60,60)
+    local swBg = Instance.new("Frame", sw); swBg.Size = UDim2.new(1, -8, 1, -8); swBg.Position = UDim2.new(0,4,0,4); swBg.BackgroundColor3 = Color3.fromRGB(60,60,60)
     local swBgCorner = Instance.new("UICorner", swBg); swBgCorner.CornerRadius = UDim.new(0,14)
     local toggleDot = Instance.new("Frame", swBg); toggleDot.Size = UDim2.new(0,20,0,20)
     toggleDot.Position = UDim2.new(initial and 1 or 0, initial and -22 or 2, 0.5, -10)
@@ -907,7 +866,7 @@ local function createToggleItem(parent, labelText, initial, onToggle)
     local state = initial or false
     local function updateVisual(s)
         state = s
-        local targetPos = s and UDim2.new(1,-22,0.5,-10) or UDim2.new(0,2,0.5,-10)
+        local targetPos = s and UDim2.new(1, -22, 0.5, -10) or UDim2.new(0, 2, 0.5, -10)
         TweenService:Create(toggleDot, TweenInfo.new(0.15), {Position = targetPos}):Play()
         toggleDot.BackgroundColor3 = s and Color3.fromRGB(120,200,120) or Color3.fromRGB(160,160,160)
         swBg.BackgroundColor3 = s and Color3.fromRGB(35,90,35) or Color3.fromRGB(60,60,60)
@@ -921,11 +880,15 @@ local function createToggleItem(parent, labelText, initial, onToggle)
 end
 
 local function createButtonItem(parent, labelText, buttonText, callback)
-    local item = Instance.new("Frame", parent); item.Size = UDim2.new(0.95,0,0,44); item.BackgroundColor3 = Color3.fromRGB(28,28,28)
+    local item = Instance.new("Frame", parent)
+    item.Size = UDim2.new(0.95, 0, 0, 44); item.BackgroundColor3 = Color3.fromRGB(28,28,28); item.BorderSizePixel = 0
     local itemCorner = Instance.new("UICorner", item); itemCorner.CornerRadius = UDim.new(0,10)
-    local lbl = Instance.new("TextLabel", item); lbl.Size = UDim2.new(1,-120,1,0); lbl.Position = UDim2.new(0,12,0,0)
-    lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(210,210,210); lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Text = labelText
-    local btn = Instance.new("TextButton", item); btn.Size = UDim2.new(0,88,0,28); btn.Position = UDim2.new(1,-100,0.5,-14)
+    local lbl = Instance.new("TextLabel", item)
+    lbl.Size = UDim2.new(1, -120, 1, 0); lbl.Position = UDim2.new(0,12,0,0)
+    lbl.BackgroundTransparency = 1; lbl.Font = Enum.Font.Gotham; lbl.TextSize = 14; lbl.TextColor3 = Color3.fromRGB(210,210,210)
+    lbl.TextXAlignment = Enum.TextXAlignment.Left; lbl.Text = labelText
+    local btn = Instance.new("TextButton", item)
+    btn.Size = UDim2.new(0,88,0,28); btn.Position = UDim2.new(1, -100, 0.5, -14)
     btn.BackgroundColor3 = Color3.fromRGB(38,120,190); btn.AutoButtonColor = false
     local btnCorner = Instance.new("UICorner", btn); btnCorner.CornerRadius = UDim.new(0,12)
     btn.Font = Enum.Font.GothamBold; btn.TextSize = 14; btn.TextColor3 = Color3.fromRGB(240,240,240); btn.Text = buttonText
@@ -933,7 +896,7 @@ local function createButtonItem(parent, labelText, buttonText, callback)
     return item, lbl, btn
 end
 
--- Categories mapping (includes new texture toggles)
+-- Categories mapping
 local Categories = {
     ["ESP"] = {
         { label = "ESP Players", get = function() return PlayerESPActive end, toggle = function() TogglePlayerESP() end },
@@ -945,18 +908,18 @@ local Categories = {
         { label = "Remove players Textures", get = function() return GraySkinActive end, toggle = function() ToggleGraySkin() end },
         { label = "Ativar Textures Tijolos Brancos", get = function() return TextureActive end, toggle = function() ToggleTexture() end },
         { label = "Snow texture", get = function() return SnowActive end, toggle = function() ToggleSnow() end },
-        { label = "Remove Fog", get = function() return RemoveFogActive end, toggle = function() ToggleRemoveFog() end },
-        { label = "Remove Textures", get = function() return RemoveTexturesActive end, toggle = function() ToggleRemoveTextures() end },
     },
     ["Timers"] = {
         { label = "Ativar Contador de Down", get = function() return DownTimerActive end, toggle = function() ToggleDownTimer() end },
     },
 }
 
--- Build content and tabs wiring
+-- Build content
 local currentCategory = "ESP"
 local function clearContent()
-    for _,v in pairs(ContentScroll:GetChildren()) do if v:IsA("Frame") then safeDestroy(v) end end
+    for _,v in pairs(ContentScroll:GetChildren()) do
+        if v:IsA("Frame") then safeDestroy(v) end
+    end
 end
 
 local function buildCategory(name, filter)
@@ -994,12 +957,14 @@ local function buildCategory(name, filter)
                     local ok2, newState = pcall(function() return entry.get() end)
                     if ok2 and setVisual then pcall(function() setVisual(newState) end) end
                 end)
-                item.LayoutOrder = order; order = order + 1
+                item.LayoutOrder = order
+                order = order + 1
             end
         end
     end
 end
 
+-- Tabs handlers
 local function setActiveTabVisual(activeTab)
     TabESP.BackgroundColor3 = (activeTab == TabESP) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
     TabTextures.BackgroundColor3 = (activeTab == TabTextures) and Color3.fromRGB(34,34,34) or Color3.fromRGB(28,28,28)
@@ -1016,7 +981,7 @@ SearchBox:GetPropertyChangedSignal("Text"):Connect(function() buildCategory(curr
 Players.PlayerAdded:Connect(function() if currentCategory == "Teleport" then task.delay(0.06, function() buildCategory("Teleport", SearchBox.Text) end) end end)
 Players.PlayerRemoving:Connect(function() if currentCategory == "Teleport" then task.delay(0.06, function() buildCategory("Teleport", SearchBox.Text) end) end end)
 
--- draggable main frame
+-- Draggable main frame
 do
     local dragging, dragStart, startPos = false, nil, nil
     MainFrame.InputBegan:Connect(function(input)
@@ -1033,11 +998,24 @@ do
     end)
 end
 
--- Minimize / restore / mobile toggle / keyboard K
-MinimizeBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false; MinimizedIcon.Visible = true end)
-MinimizedIcon.MouseButton1Click:Connect(function() MainFrame.Visible = true; MinimizedIcon.Visible = false end)
-CloseBtn.MouseButton1Click:Connect(function() MainFrame.Visible = false end)
-MobileToggle.MouseButton1Click:Connect(function() MainFrame.Visible = not MainFrame.Visible; if MainFrame.Visible then MinimizedIcon.Visible = false end end)
+-- Minimize / restore behavior
+MinimizeBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+    MinimizedIcon.Visible = true
+end)
+MinimizedIcon.MouseButton1Click:Connect(function()
+    MainFrame.Visible = true
+    MinimizedIcon.Visible = false
+end)
+CloseBtn.MouseButton1Click:Connect(function()
+    MainFrame.Visible = false
+end)
+MobileToggle.MouseButton1Click:Connect(function()
+    MainFrame.Visible = not MainFrame.Visible
+    if MainFrame.Visible then MinimizedIcon.Visible = false end
+end)
+
+-- Keyboard K toggles menu (PC)
 local menuOpen = false
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
@@ -1048,7 +1026,7 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
--- finish loading
+-- Finish loading
 local function finishLoading()
     pcall(function() spinTween:Cancel() end)
     safeDestroy(LoadingPanel)
@@ -1062,11 +1040,9 @@ local function finishLoading()
     end)
 end
 
--- initial build
+-- Initial population and show menu after short loading
 setActiveTabVisual(TabESP)
 buildCategory("ESP", "")
-
--- open menu after loading
 task.spawn(function()
     task.wait(1.1)
     MainFrame.Visible = true
@@ -1074,7 +1050,7 @@ task.spawn(function()
     finishLoading()
 end)
 
--- Make toggles accessible globally for debugging
+-- Expose toggles for debugging if needed
 _G.FTF = _G.FTF or {}
 _G.FTF.TogglePlayerESP = TogglePlayerESP
 _G.FTF.ToggleComputerESP = ToggleComputerESP
@@ -1084,8 +1060,6 @@ _G.FTF.ToggleTexture = ToggleTexture
 _G.FTF.ToggleSnow = ToggleSnow
 _G.FTF.ToggleGraySkin = ToggleGraySkin
 _G.FTF.ToggleDownTimer = ToggleDownTimer
-_G.FTF.ToggleRemoveFog = ToggleRemoveFog
-_G.FTF.ToggleRemoveTextures = ToggleRemoveTextures
 _G.FTF.DisableAllESP = function() disablePlayerESP(); disableComputerESP(); disableFreezePodsESP(); disableDoorESP() end
 
-print("[FTF_ESP] Complete script loaded with new 'Remove Fog' and 'Remove Textures' options.")
+print("[FTF_ESP] Script loaded successfully.")
