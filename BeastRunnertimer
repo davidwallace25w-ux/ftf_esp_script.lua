@@ -1,0 +1,527 @@
+-- LocalScript: RunnerModernMenuFixed.local.lua
+-- Coloque em StarterPlayerScripts (LocalScript)
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Cria ScreenGui raiz
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "RunnerModernGUI_Fixed"
+screenGui.ResetOnSpawn = false
+screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+screenGui.Parent = PlayerGui
+
+-- Utilidades
+local function tween(inst, props, info)
+    info = info or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(inst, info, props):Play()
+end
+
+local function makeCorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = parent
+    return c
+end
+
+local function makeStroke(parent, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Thickness = thickness or 1
+    s.Transparency = transparency or 0.6
+    s.Parent = parent
+    return s
+end
+
+local function roundPercent(val)
+    return tostring(math.floor(val * 100 + 0.5)) .. "%"
+end
+
+-- BOTTOM HINT (visível e legível)
+local bottomHint = Instance.new("Frame")
+bottomHint.Name = "BottomHint"
+bottomHint.AnchorPoint = Vector2.new(0.5, 1)
+bottomHint.Size = UDim2.new(0.6, 0, 0, 50)
+bottomHint.Position = UDim2.new(0.5, 0, 1, -26)
+bottomHint.BackgroundColor3 = Color3.fromRGB(22, 24, 28) -- fundo escuro
+bottomHint.BorderSizePixel = 0
+bottomHint.Parent = screenGui
+makeCorner(bottomHint, 12)
+bottomHint.ZIndex = 100
+
+local hintText = Instance.new("TextLabel")
+hintText.Name = "HintText"
+hintText.Size = UDim2.new(1, -24, 1, 0)
+hintText.Position = UDim2.new(0, 12, 0, 0)
+hintText.BackgroundTransparency = 1
+hintText.Font = Enum.Font.Gotham
+hintText.TextSize = 18
+hintText.TextScaled = true
+hintText.Text = 'Pressione "L" para abrir o menu'
+hintText.TextColor3 = Color3.fromRGB(240, 240, 240)
+hintText.TextXAlignment = Enum.TextXAlignment.Left
+hintText.Parent = bottomHint
+makeStroke(hintText, 1, 0.65)
+
+-- decorative indicator
+local indicator = Instance.new("Frame")
+indicator.Size = UDim2.new(0, 6, 0, 30)
+indicator.Position = UDim2.new(0, 12, 0, 10)
+indicator.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+indicator.BorderSizePixel = 0
+indicator.Parent = bottomHint
+makeCorner(indicator, 6)
+
+-- Modern Menu (visível quando abrir)
+local menu = Instance.new("Frame")
+menu.Name = "RunnerMenu"
+menu.AnchorPoint = Vector2.new(0.5, 0.5)
+menu.Size = UDim2.new(0, 420, 0, 240)
+menu.Position = UDim2.new(0.5, 0, 0.45, 0)
+menu.BackgroundColor3 = Color3.fromRGB(18, 20, 24)
+menu.BorderSizePixel = 0
+menu.Visible = false
+menu.Parent = screenGui
+makeCorner(menu, 14)
+menu.ZIndex = 110
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, -32, 0, 36)
+title.Position = UDim2.new(0, 16, 0, 14)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextColor3 = Color3.fromRGB(245, 245, 245)
+title.Text = "Ferramentas Runner"
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.Parent = menu
+
+local subtitle = Instance.new("TextLabel")
+subtitle.Size = UDim2.new(1, -32, 0, 18)
+subtitle.Position = UDim2.new(0, 16, 0, 50)
+subtitle.BackgroundTransparency = 1
+subtitle.Font = Enum.Font.Gotham
+subtitle.TextSize = 12
+subtitle.TextColor3 = Color3.fromRGB(170, 170, 170)
+subtitle.Text = "Opções de exibição e método de atualização"
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.Parent = menu
+
+-- ROW 1: Toggle runner
+local row1 = Instance.new("Frame")
+row1.Size = UDim2.new(1, -32, 0, 52)
+row1.Position = UDim2.new(0, 16, 0, 80)
+row1.BackgroundTransparency = 1
+row1.Parent = menu
+
+local labelRunner = Instance.new("TextLabel")
+labelRunner.Size = UDim2.new(0.72, 0, 1, 0)
+labelRunner.BackgroundTransparency = 1
+labelRunner.Font = Enum.Font.Gotham
+labelRunner.TextSize = 16
+labelRunner.TextColor3 = Color3.fromRGB(235, 235, 235)
+labelRunner.Text = "Contador de tempo (runner)"
+labelRunner.TextXAlignment = Enum.TextXAlignment.Left
+labelRunner.Parent = row1
+
+local toggleBtn = Instance.new("TextButton")
+toggleBtn.Size = UDim2.new(0.28, 0, 0.72, 0)
+toggleBtn.Position = UDim2.new(0.72, 0, 0.14, 0)
+toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+toggleBtn.BorderSizePixel = 0
+toggleBtn.Font = Enum.Font.GothamBold
+toggleBtn.TextSize = 16
+toggleBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleBtn.Text = "OFF"
+toggleBtn.Parent = row1
+makeCorner(toggleBtn, 10)
+
+-- ROW 2: Mode segmented
+local row2 = Instance.new("Frame")
+row2.Size = UDim2.new(1, -32, 0, 72)
+row2.Position = UDim2.new(0, 16, 0, 140)
+row2.BackgroundTransparency = 1
+row2.Parent = menu
+
+local modeLabel = Instance.new("TextLabel")
+modeLabel.Size = UDim2.new(1, 0, 0, 16)
+modeLabel.Position = UDim2.new(0, 0, 0, 0)
+modeLabel.BackgroundTransparency = 1
+modeLabel.Font = Enum.Font.Gotham
+modeLabel.TextSize = 12
+modeLabel.TextColor3 = Color3.fromRGB(170, 170, 170)
+modeLabel.Text = "Método de atualização"
+modeLabel.TextXAlignment = Enum.TextXAlignment.Left
+modeLabel.Parent = row2
+
+local seg = Instance.new("Frame")
+seg.Size = UDim2.new(1, 0, 0, 44)
+seg.Position = UDim2.new(0, 0, 0, 18)
+seg.BackgroundColor3 = Color3.fromRGB(28, 30, 34)
+seg.BorderSizePixel = 0
+seg.Parent = row2
+makeCorner(seg, 10)
+
+local btnReactive = Instance.new("TextButton")
+btnReactive.Size = UDim2.new(0.5, -8, 1, -8)
+btnReactive.Position = UDim2.new(0, 8, 0, 4)
+btnReactive.BackgroundTransparency = 0
+btnReactive.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+btnReactive.Font = Enum.Font.Gotham
+btnReactive.TextSize = 14
+btnReactive.Text = "Reativo"
+btnReactive.TextColor3 = Color3.fromRGB(255,255,255)
+btnReactive.Parent = seg
+makeCorner(btnReactive, 8)
+
+local btnHeartbeat = Instance.new("TextButton")
+btnHeartbeat.Size = UDim2.new(0.5, -8, 1, -8)
+btnHeartbeat.Position = UDim2.new(0.5, 0, 0, 4)
+btnHeartbeat.BackgroundTransparency = 0
+btnHeartbeat.BackgroundColor3 = Color3.fromRGB(60, 66, 72)
+btnHeartbeat.Font = Enum.Font.Gotham
+btnHeartbeat.TextSize = 14
+btnHeartbeat.Text = "Heartbeat"
+btnHeartbeat.TextColor3 = Color3.fromRGB(210,210,210)
+btnHeartbeat.Parent = seg
+makeCorner(btnHeartbeat, 8)
+
+-- Estado inicial
+local runnerEnabled = false
+local updateMode = "reactive" -- "reactive" ou "heartbeat"
+local runnerState = {
+    heartbeatConn = nil,
+    playerAddedConn = nil,
+    perPlayer = {}, -- perPlayer[player] = { charConn, beastAddedConn, beastRemovedConn, numberConn }
+}
+
+-- FUNÇÕES: criação e remoção de billboards
+local function destroyBillboardFromCharacter(character)
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local bb = hrp:FindFirstChild("BeastPowerBillboard")
+        if bb then
+            bb:Destroy()
+        end
+    end
+end
+
+local function createLabelForPlayer(player)
+    if not player or player == LocalPlayer then return nil end
+    local character = player.Character
+    if not character then return nil end
+
+    local hrp = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return nil end
+
+    local billboard = hrp:FindFirstChild("BeastPowerBillboard")
+    if not billboard then
+        billboard = Instance.new("BillboardGui")
+        billboard.Name = "BeastPowerBillboard"
+        billboard.Size = UDim2.new(2, 0, 1, 0)
+        billboard.StudsOffset = Vector3.new(0, 3, 0)
+        billboard.AlwaysOnTop = true
+        billboard.LightInfluence = 1
+        billboard.Parent = hrp
+
+        local label = Instance.new("TextLabel")
+        label.Name = "BeastPowerLabel"
+        label.Size = UDim2.new(1, 0, 1, 0)
+        label.BackgroundTransparency = 1
+        label.Font = Enum.Font.GothamBold
+        label.TextSize = 20
+        label.TextScaled = true
+        label.Text = ""
+        label.TextColor3 = Color3.new(1, 1, 1)
+        label.Parent = billboard
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 2
+        stroke.Color = Color3.new(0, 0, 0)
+        stroke.Transparency = 0.45
+        stroke.Parent = label
+    end
+
+    return billboard:FindFirstChild("BeastPowerLabel")
+end
+
+-- HEARTBEAT: atualiza a cada Heartbeat (polling)
+local function UpdateLabels_Heartbeat()
+    for _, player in ipairs(Players:GetPlayers()) do
+        if player ~= LocalPlayer then
+            local character = player.Character
+            if character then
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    local bb = hrp:FindFirstChild("BeastPowerBillboard")
+                    if bb then
+                        local label = bb:FindFirstChild("BeastPowerLabel")
+                        if label then
+                            local beastPowers = character:FindFirstChild("BeastPowers")
+                            if beastPowers then
+                                local num = beastPowers:FindFirstChildOfClass("NumberValue")
+                                if num then
+                                    label.Text = roundPercent(num.Value)
+                                else
+                                    label.Text = ""
+                                end
+                            else
+                                label.Text = ""
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- REATIVO: conecta NumberValue.Changed em cada jogador
+local function connectReactiveForCharacter(player, character)
+    if not player or not character then return end
+    runnerState.perPlayer[player] = runnerState.perPlayer[player] or {}
+
+    local per = runnerState.perPlayer[player]
+
+    -- limpa conexão de number anterior
+    if per.numberConn then
+        per.numberConn:Disconnect()
+        per.numberConn = nil
+    end
+
+    local function tryConnectNumber()
+        if not character or not character.Parent then return end
+        local beast = character:FindFirstChild("BeastPowers")
+        if beast then
+            local num = beast:FindFirstChildOfClass("NumberValue")
+            local label = createLabelForPlayer(player)
+            if num then
+                if label then label.Text = roundPercent(num.Value) end
+                per.numberConn = num.Changed:Connect(function()
+                    if label then label.Text = roundPercent(num.Value) end
+                end)
+            else
+                if label then label.Text = "" end
+            end
+        else
+            local label = createLabelForPlayer(player)
+            if label then label.Text = "" end
+        end
+    end
+
+    -- pega eventos para BeastPowers adicionado/removido
+    if per.beastAddedConn then per.beastAddedConn:Disconnect() per.beastAddedConn = nil end
+    if per.beastRemovedConn then per.beastRemovedConn:Disconnect() per.beastRemovedConn = nil end
+
+    per.beastAddedConn = character.ChildAdded:Connect(function(child)
+        if child.Name == "BeastPowers" then
+            task.wait(0.05)
+            tryConnectNumber()
+        end
+    end)
+    per.beastRemovedConn = character.ChildRemoved:Connect(function(child)
+        if child.Name == "BeastPowers" then
+            if per.numberConn then
+                per.numberConn:Disconnect()
+                per.numberConn = nil
+            end
+            local label = createLabelForPlayer(player)
+            if label then label.Text = "" end
+        end
+    end)
+
+    -- tentativa inicial
+    tryConnectNumber()
+end
+
+local function attachCharacterListener(player)
+    if not player then return end
+    runnerState.perPlayer[player] = runnerState.perPlayer[player] or {}
+    local per = runnerState.perPlayer[player]
+
+    if per.charConn then per.charConn:Disconnect() per.charConn = nil end
+    per.charConn = player.CharacterAdded:Connect(function(character)
+        task.wait(0.4)
+        createLabelForPlayer(player)
+        if updateMode == "reactive" then
+            connectReactiveForCharacter(player, character)
+        end
+    end)
+end
+
+local function attachExistingPlayers()
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer then
+            createLabelForPlayer(pl)
+            attachCharacterListener(pl)
+            if updateMode == "reactive" and pl.Character then
+                connectReactiveForCharacter(pl, pl.Character)
+            end
+        end
+    end
+end
+
+local function cleanupRunnerState()
+    if runnerState.heartbeatConn then
+        runnerState.heartbeatConn:Disconnect()
+        runnerState.heartbeatConn = nil
+    end
+    if runnerState.playerAddedConn then
+        runnerState.playerAddedConn:Disconnect()
+        runnerState.playerAddedConn = nil
+    end
+
+    for player, per in pairs(runnerState.perPlayer) do
+        if per.charConn then per.charConn:Disconnect() end
+        if per.beastAddedConn then per.beastAddedConn:Disconnect() end
+        if per.beastRemovedConn then per.beastRemovedConn:Disconnect() end
+        if per.numberConn then per.numberConn:Disconnect() end
+    end
+    runnerState.perPlayer = {}
+
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer and pl.Character then
+            destroyBillboardFromCharacter(pl.Character)
+        end
+    end
+end
+
+-- enable/disable para cada modo
+local function enableHeartbeat()
+    cleanupRunnerState()
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer then
+            createLabelForPlayer(pl)
+            attachCharacterListener(pl)
+        end
+    end
+    runnerState.playerAddedConn = Players.PlayerAdded:Connect(function(pl)
+        if pl ~= LocalPlayer then
+            attachCharacterListener(pl)
+            task.wait(0.4)
+            createLabelForPlayer(pl)
+        end
+    end)
+    runnerState.heartbeatConn = RunService.Heartbeat:Connect(UpdateLabels_Heartbeat)
+end
+
+local function enableReactive()
+    cleanupRunnerState()
+    attachExistingPlayers()
+    runnerState.playerAddedConn = Players.PlayerAdded:Connect(function(pl)
+        if pl ~= LocalPlayer then
+            attachCharacterListener(pl)
+            task.wait(0.4)
+            if pl.Character then
+                connectReactiveForCharacter(pl, pl.Character)
+            end
+        end
+    end)
+end
+
+local function EnableRunner()
+    if runnerEnabled then return end
+    runnerEnabled = true
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(0, 170, 100)
+    toggleBtn.Text = "ON"
+    if updateMode == "heartbeat" then
+        enableHeartbeat()
+    else
+        enableReactive()
+    end
+end
+
+local function DisableRunner()
+    if not runnerEnabled then return end
+    runnerEnabled = false
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
+    toggleBtn.Text = "OFF"
+    cleanupRunnerState()
+end
+
+-- UI interactions e lógica de restart ao trocar modo
+toggleBtn.MouseButton1Click:Connect(function()
+    if runnerEnabled then
+        DisableRunner()
+    else
+        EnableRunner()
+    end
+end)
+
+btnReactive.MouseButton1Click:Connect(function()
+    if updateMode == "reactive" then return end
+    updateMode = "reactive"
+    btnReactive.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    btnReactive.TextColor3 = Color3.fromRGB(255,255,255)
+    btnHeartbeat.BackgroundColor3 = Color3.fromRGB(60, 66, 72)
+    btnHeartbeat.TextColor3 = Color3.fromRGB(210,210,210)
+    if runnerEnabled then
+        DisableRunner()
+        task.delay(0.08, EnableRunner)
+    end
+end)
+
+btnHeartbeat.MouseButton1Click:Connect(function()
+    if updateMode == "heartbeat" then return end
+    updateMode = "heartbeat"
+    btnHeartbeat.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+    btnHeartbeat.TextColor3 = Color3.fromRGB(255,255,255)
+    btnReactive.BackgroundColor3 = Color3.fromRGB(60, 66, 72)
+    btnReactive.TextColor3 = Color3.fromRGB(210,210,210)
+    if runnerEnabled then
+        DisableRunner()
+        task.delay(0.08, EnableRunner)
+    end
+end)
+
+-- Ativa/Desativa menu com a tecla L
+local menuVisible = false
+UserInputService.InputBegan:Connect(function(input, gp)
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.L then
+        menuVisible = not menuVisible
+        if menuVisible then
+            menu.Visible = true
+            menu.BackgroundTransparency = 0
+            menu.Position = UDim2.new(0.5, 0, 0.35, 0)
+            tween(menu, {Position = UDim2.new(0.5, 0, 0.45, 0), BackgroundTransparency = 0}, TweenInfo.new(0.18))
+        else
+            tween(menu, {Position = UDim2.new(0.5, 0, 0.35, 0), BackgroundTransparency = 1}, TweenInfo.new(0.14))
+            task.delay(0.14, function()
+                if menu then menu.Visible = false end
+            end)
+        end
+    end
+end)
+
+-- Hint: permanece 5s e some (animação suave)
+task.spawn(function()
+    task.wait(0.2)
+    -- pequena entrada
+    bottomHint.Position = UDim2.new(0.5, 0, 1, 20)
+    bottomHint.BackgroundTransparency = 1
+    tween(bottomHint, {Position = UDim2.new(0.5, 0, 1, -26), BackgroundTransparency = 0}, TweenInfo.new(0.2))
+    task.wait(5)
+    tween(bottomHint, {Position = UDim2.new(0.5, 0, 1, 50), BackgroundTransparency = 1}, TweenInfo.new(0.18))
+    task.delay(0.18, function()
+        if bottomHint and bottomHint.Parent then bottomHint:Destroy() end
+    end)
+end)
+
+-- Cleanup quando jogador sai (garantia extra)
+Players.PlayerRemoving:Connect(function(pl)
+    local per = runnerState.perPlayer[pl]
+    if per then
+        if per.charConn then per.charConn:Disconnect() end
+        if per.beastAddedConn then per.beastAddedConn:Disconnect() end
+        if per.beastRemovedConn then per.beastRemovedConn:Disconnect() end
+        if per.numberConn then per.numberConn:Disconnect() end
+        runnerState.perPlayer[pl] = nil
+    end
+end)
+
+-- FIM: script pronto
