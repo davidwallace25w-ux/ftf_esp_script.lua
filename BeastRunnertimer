@@ -1,592 +1,371 @@
--- runner_gui_script.lua
--- Sincroniza o bottom-left com o texto que aparece acima da cabeça do jogador (BeastPowerLabel).
--- Prioridade: se existir BeastPowerLabel local, use o Text dela; caso contrário, use o NumberValue.
--- Detecta criação e remoção da billboard/label e alterna automaticamente.
+-- RunnerMinimalDistant.local.lua
+-- LocalScript -> Coloque em StarterPlayerScripts
 
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
 
--- Visual settings (ajuste se quiser)
-local BILLBOARD_SIZE = UDim2.new(3, 0, 1.6, 0)
-local BILLBOARD_OFFSET = Vector3.new(0, 5, 0)
-local BILLBOARD_MAXDIST = 1e6
-local HEAD_FONT = Enum.Font.GothamBold
-local HEAD_TEXT_SIZE = 24
-
--- Gui root
-local playerGui = LocalPlayer:WaitForChild("PlayerGui")
+-- Root ScreenGui (alto DisplayOrder para evitar sobreposição)
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "Runner_Synced_GUI"
+screenGui.Name = "RunnerMinimalDistantGUI"
 screenGui.ResetOnSpawn = false
-screenGui.DisplayOrder = 8000
+screenGui.DisplayOrder = 3000
 screenGui.IgnoreGuiInset = true
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-screenGui.Parent = playerGui
+screenGui.Parent = PlayerGui
 
-local function makeCorner(parent, r)
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, r or 8)
-	c.Parent = parent
-	return c
+-- Helpers
+local function makeCorner(parent, radius)
+    local c = Instance.new("UICorner")
+    c.CornerRadius = UDim.new(0, radius or 8)
+    c.Parent = parent
+    return c
 end
-local function makeStroke(parent, thickness, trans, color)
-	local s = Instance.new("UIStroke")
-	s.Thickness = thickness or 1.6
-	s.Transparency = (trans ~= nil) and trans or 0.45
-	s.Color = color or Color3.fromRGB(0,0,0)
-	s.Parent = parent
-	return s
+local function makeStroke(parent, thickness, transparency)
+    local s = Instance.new("UIStroke")
+    s.Thickness = thickness or 1
+    s.Transparency = (transparency ~= nil) and transparency or 0.6
+    s.Color = Color3.fromRGB(0,0,0)
+    s.Parent = parent
+    return s
 end
 local function tween(inst, props, info)
-	info = info or TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	TweenService:Create(inst, info, props):Play()
+    info = info or TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+    TweenService:Create(inst, info, props):Play()
+end
+local function percentText(v)
+    return tostring(math.floor(v * 100 + 0.5)) .. "%"
 end
 
--- Formatação EXATA do seu script original
-local function formatPercentFromNumberValueValue(v)
-	return tostring(math.round(v * 100)) .. "%"
-end
-
--- ================= Hint minimal (desaparece após 5s) =================
-local hint = Instance.new("TextLabel")
-hint.Name = "RunnerHint"
+-- Minimal hint (very small, minimalist)
+local hint = Instance.new("Frame")
+hint.Name = "MinimalHint"
 hint.AnchorPoint = Vector2.new(0.5, 1)
-hint.Size = UDim2.new(0, 220, 0, 26)
+hint.Size = UDim2.new(0, 200, 0, 30)
 hint.Position = UDim2.new(0.5, 0, 1, -18)
-hint.BackgroundTransparency = 1
-hint.Font = Enum.Font.SourceSansSemibold
-hint.TextSize = 14
-hint.Text = 'Pressione "L" para abrir o menu'
-hint.TextColor3 = Color3.fromRGB(240,240,240)
-hint.TextScaled = true
-hint.TextXAlignment = Enum.TextXAlignment.Center
-hint.ZIndex = 100
+hint.BackgroundColor3 = Color3.fromRGB(28, 30, 34)
+hint.BorderSizePixel = 0
 hint.Parent = screenGui
+makeCorner(hint, 10)
+hint.ZIndex = 100
+hint.BackgroundTransparency = 1 -- will tween in
 
-task.spawn(function()
-	task.wait(0.08)
-	hint.TextTransparency = 1
-	tween(hint, {TextTransparency = 0}, TweenInfo.new(0.12))
-	task.wait(5)
-	tween(hint, {TextTransparency = 1, Position = UDim2.new(0.5, 0, 1, 28)}, TweenInfo.new(0.12))
-	task.delay(0.14, function()
-		if hint and hint.Parent then hint:Destroy() end
-	end)
-end)
+local hintText = Instance.new("TextLabel")
+hintText.Name = "HintText"
+hintText.Size = UDim2.new(1, -16, 1, 0)
+hintText.Position = UDim2.new(0, 8, 0, 0)
+hintText.BackgroundTransparency = 1
+hintText.Font = Enum.Font.SourceSansSemibold
+hintText.TextSize = 14
+hintText.TextScaled = true
+hintText.Text = 'Pressione "L" para abrir o menu'
+hintText.TextColor3 = Color3.fromRGB(242,242,242)
+hintText.TextTransparency = 0
+hintText.TextXAlignment = Enum.TextXAlignment.Left
+hintText.Parent = hint
+makeStroke(hintText, 0.8, 0.65)
 
--- ================= Menu minimal =================
+-- Menu (compact modern)
 local menu = Instance.new("Frame")
 menu.Name = "RunnerMenu"
-menu.Size = UDim2.new(0, 340, 0, 120)
 menu.AnchorPoint = Vector2.new(0.5, 0.5)
+menu.Size = UDim2.new(0, 320, 0, 140)
 menu.Position = UDim2.new(0.5, 0, 0.45, 0)
-menu.BackgroundColor3 = Color3.fromRGB(26,26,28)
+menu.BackgroundColor3 = Color3.fromRGB(18, 18, 20)
 menu.BorderSizePixel = 0
-menu.Visible = false
-menu.ZIndex = 120
 menu.Parent = screenGui
-makeCorner(menu, 10)
+makeCorner(menu, 12)
+menu.ZIndex = 110
+menu.Visible = false
+menu.BackgroundTransparency = 0 -- visible by default when shown
 
 local title = Instance.new("TextLabel")
+title.Name = "Title"
 title.Size = UDim2.new(1, -24, 0, 28)
-title.Position = UDim2.new(0, 12, 0, 8)
+title.Position = UDim2.new(0, 12, 0, 12)
 title.BackgroundTransparency = 1
 title.Font = Enum.Font.SourceSansBold
 title.TextSize = 18
-title.TextColor3 = Color3.fromRGB(245,245,245)
 title.Text = "Runner"
+title.TextColor3 = Color3.fromRGB(245,245,245)
 title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextTransparency = 0
+title.TextScaled = false
 title.Parent = menu
 
-local desc = Instance.new("TextLabel")
-desc.Size = UDim2.new(1, -24, 0, 16)
-desc.Position = UDim2.new(0, 12, 0, 36)
-desc.BackgroundTransparency = 1
-desc.Font = Enum.Font.SourceSans
-desc.TextSize = 12
-desc.TextColor3 = Color3.fromRGB(170,170,170)
-desc.Text = "Contador de tempo (runner)"
-desc.TextXAlignment = Enum.TextXAlignment.Left
-desc.Parent = menu
+local subtitle = Instance.new("TextLabel")
+subtitle.Name = "Subtitle"
+subtitle.Size = UDim2.new(1, -24, 0, 16)
+subtitle.Position = UDim2.new(0, 12, 0, 40)
+subtitle.BackgroundTransparency = 1
+subtitle.Font = Enum.Font.SourceSans
+subtitle.TextSize = 12
+subtitle.Text = "Controles de exibição"
+subtitle.TextColor3 = Color3.fromRGB(170,170,170)
+subtitle.TextXAlignment = Enum.TextXAlignment.Left
+subtitle.TextTransparency = 0
+subtitle.Parent = menu
 
+-- Toggle row
 local row = Instance.new("Frame")
+row.Name = "Row"
 row.Size = UDim2.new(1, -24, 0, 48)
-row.Position = UDim2.new(0, 12, 0, 56)
+row.Position = UDim2.new(0, 12, 0, 64)
 row.BackgroundTransparency = 1
 row.Parent = menu
 
 local label = Instance.new("TextLabel")
-label.Size = UDim2.new(0.7, 0, 1, 0)
+label.Size = UDim2.new(0.68, 0, 1, 0)
 label.BackgroundTransparency = 1
 label.Font = Enum.Font.SourceSans
 label.TextSize = 14
 label.Text = "Contador de tempo (runner)"
 label.TextColor3 = Color3.fromRGB(235,235,235)
 label.TextXAlignment = Enum.TextXAlignment.Left
+label.TextTransparency = 0
 label.Parent = row
 
 local toggleBtn = Instance.new("TextButton")
-toggleBtn.Size = UDim2.new(0.3, 0, 0.72, 0)
-toggleBtn.Position = UDim2.new(0.7, 0, 0.14, 0)
+toggleBtn.Name = "Toggle"
+toggleBtn.Size = UDim2.new(0.32, 0, 0.72, 0)
+toggleBtn.Position = UDim2.new(0.68, 0, 0.14, 0)
 toggleBtn.BackgroundColor3 = Color3.fromRGB(180, 0, 0)
 toggleBtn.BorderSizePixel = 0
 toggleBtn.Font = Enum.Font.SourceSansBold
 toggleBtn.TextSize = 14
 toggleBtn.Text = "OFF"
 toggleBtn.TextColor3 = Color3.fromRGB(255,255,255)
+toggleBtn.TextTransparency = 0
 toggleBtn.Parent = row
 makeCorner(toggleBtn, 8)
 
--- ================= Head labels (OUTROS players) =================
-local function createBillboardForHRP(hrp)
-	local bb = hrp:FindFirstChild("BeastPowerBillboard")
-	if not bb then
-		bb = Instance.new("BillboardGui")
-		bb.Name = "BeastPowerBillboard"
-		bb.Size = BILLBOARD_SIZE
-		bb.StudsOffset = BILLBOARD_OFFSET
-		bb.AlwaysOnTop = true -- atravessa paredes
-		bb.LightInfluence = 0
-		bb.MaxDistance = BILLBOARD_MAXDIST
-		bb.Parent = hrp
-	end
-
-	local txt = bb:FindFirstChild("BeastPowerLabel")
-	if not txt then
-		txt = Instance.new("TextLabel")
-		txt.Name = "BeastPowerLabel"
-		txt.Size = UDim2.new(1, 0, 1, 0)
-		txt.BackgroundTransparency = 1
-		txt.Font = HEAD_FONT
-		txt.TextSize = HEAD_TEXT_SIZE
-		txt.TextScaled = true
-		txt.TextWrapped = true
-		txt.TextColor3 = Color3.fromRGB(255,255,255)
-		txt.Text = ""
-		txt.TextXAlignment = Enum.TextXAlignment.Center
-		txt.TextYAlignment = Enum.TextYAlignment.Center
-		txt.Parent = bb
-		makeStroke(txt, 2, 0.45, Color3.fromRGB(0,0,0))
-	end
-
-	return bb, txt
-end
-
--- ================= Bottom-left synced (MOST IMPORTANT) =================
-local bottomContainer = Instance.new("Frame")
-bottomContainer.Name = "BottomLeft"
-bottomContainer.AnchorPoint = Vector2.new(0, 1)
-bottomContainer.Size = UDim2.new(0, 240, 0, 50)
-bottomContainer.Position = UDim2.new(0, 12, 1, -12)
-bottomContainer.BackgroundTransparency = 1
-bottomContainer.BorderSizePixel = 0
-bottomContainer.ZIndex = 900
-bottomContainer.Parent = screenGui
-
-local bottomTitle = Instance.new("TextLabel")
-bottomTitle.Name = "BottomTitle"
-bottomTitle.Size = UDim2.new(1, 0, 0, 18)
-bottomTitle.Position = UDim2.new(0, 0, 0, 0)
-bottomTitle.BackgroundTransparency = 1
-bottomTitle.Font = Enum.Font.SourceSansSemibold
-bottomTitle.TextSize = 13
-bottomTitle.Text = "BeastPower"
-bottomTitle.TextColor3 = Color3.fromRGB(245,245,245)
-bottomTitle.TextXAlignment = Enum.TextXAlignment.Left
-bottomTitle.Parent = bottomContainer
-makeStroke(bottomTitle, 1.0, 0.45, Color3.fromRGB(0,0,0))
-
-local bottomValue = Instance.new("TextLabel")
-bottomValue.Name = "BottomValue"
-bottomValue.Size = UDim2.new(1, 0, 0, 30)
-bottomValue.Position = UDim2.new(0, 0, 0, 18)
-bottomValue.BackgroundTransparency = 1
-bottomValue.Font = HEAD_FONT
-bottomValue.TextSize = 20
-bottomValue.Text = "0%"
-bottomValue.TextColor3 = Color3.fromRGB(255,255,255)
-bottomValue.TextXAlignment = Enum.TextXAlignment.Left
-bottomValue.Parent = bottomContainer
-makeStroke(bottomValue, 1.8, 0.45, Color3.fromRGB(0,0,0))
-
-bottomContainer.Visible = false
-
--- ================= State & helpers =================
-local perPlayerConns = {} -- [player] = { charConn, nvConn, billboard }
-local playersAddedConn = nil
+-- Runner logic (reactive only)
 local runnerEnabled = false
+local state = { perPlayer = {}, playersConn = nil }
 
--- Local sync specific
-local localNVConn = nil
-local localBeastChildConn = nil
-
-local headLabelConn = nil          -- listens to BeastPowerLabel.Text changes
-local headLabelAncestryConn = nil  -- listens to BeastPowerLabel removal
-local headBillboardConn = nil      -- listens to hrp.ChildAdded for BeastPowerBillboard
-local headLabelAttached = false    -- whether we're currently mirroring the head label
-
--- Função que reproduz exatamente sua busca do NumberValue: FindFirstChildOfClass("NumberValue")
-local function FindNumberValueFromCharacter(character)
-	if not character then return nil end
-	local beast = character:FindFirstChild("BeastPowers")
-	if not beast then return nil end
-	return beast:FindFirstChildOfClass("NumberValue")
+local function destroyBillboardFromCharacter(character)
+    if not character then return end
+    local hrp = character:FindFirstChild("HumanoidRootPart")
+    if hrp then
+        local bb = hrp:FindFirstChild("BeastPowerBillboard")
+        if bb then bb:Destroy() end
+    end
 end
 
-local function updateLabelFromNumberLabel(label, nv)
-	if label then
-		if nv then
-			label.Text = formatPercentFromNumberValueValue(nv.Value)
-		else
-			label.Text = ""
-		end
-	end
+local function createBillboardLabel(player)
+    if not player or player == LocalPlayer then return nil end
+    if not player.Character then return nil end
+    local char = player.Character
+    local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return nil end
+
+    local bb = hrp:FindFirstChild("BeastPowerBillboard")
+    if not bb then
+        bb = Instance.new("BillboardGui")
+        bb.Name = "BeastPowerBillboard"
+
+        -- Larger size above head
+        bb.Size = UDim2.new(3.2, 0, 1.6, 0)          -- bigger on-screen size
+        bb.StudsOffset = Vector3.new(0, 5.5, 0)      -- higher above the head
+        bb.AlwaysOnTop = true                        -- render over walls/objects
+        bb.LightInfluence = 0                        -- unaffected by scene lighting
+        bb.MaxDistance = 1e6                         -- very large distance so visible from far
+        bb.Parent = hrp
+
+        local txt = Instance.new("TextLabel")
+        txt.Name = "BeastPowerLabel"
+        txt.Size = UDim2.new(1, 0, 1, 0)
+        txt.BackgroundTransparency = 1
+        txt.Font = Enum.Font.SourceSansBold
+        txt.TextSize = 28                             -- large base size
+        txt.TextScaled = true                         -- scaled to fit, good for multiple resolutions
+        txt.TextWrapped = true
+        txt.Text = ""
+        txt.TextColor3 = Color3.fromRGB(255,255,255)
+        txt.TextTransparency = 0
+        txt.Parent = bb
+
+        local stroke = Instance.new("UIStroke")
+        stroke.Thickness = 2
+        stroke.Transparency = 0.45
+        stroke.Color = Color3.fromRGB(0,0,0)
+        stroke.Parent = txt
+    end
+
+    return bb:FindFirstChild("BeastPowerLabel")
 end
 
--- Atualiza o bottom (local player) imediatemente a partir do NV
-local function UpdateLocalBottomFromNV(nv)
-	if nv then
-		bottomValue.Text = formatPercentFromNumberValueValue(nv.Value)
-	else
-		bottomValue.Text = "0%"
-	end
+local function connectReactiveForCharacter(player, character)
+    if not player or not character then return end
+    state.perPlayer[player] = state.perPlayer[player] or {}
+    local entry = state.perPlayer[player]
+
+    -- cleanup previous
+    if entry.numberConn then entry.numberConn:Disconnect() entry.numberConn = nil end
+    if entry.beastAddedConn then entry.beastAddedConn:Disconnect() entry.beastAddedConn = nil end
+    if entry.beastRemovedConn then entry.beastRemovedConn:Disconnect() entry.beastRemovedConn = nil end
+    if entry.beastChildConn then entry.beastChildConn:Disconnect() entry.beastChildConn = nil end
+
+    local function tryConnectNumber()
+        if not character or not character.Parent then return end
+        local beast = character:FindFirstChild("BeastPowers")
+        local label = createBillboardLabel(player)
+        if beast then
+            local nv = beast:FindFirstChildOfClass("NumberValue")
+            if nv then
+                if label then label.Text = percentText(nv.Value) end
+                entry.numberConn = nv.Changed:Connect(function()
+                    if label then label.Text = percentText(nv.Value) end
+                end)
+            else
+                if label then label.Text = "" end
+                -- if NumberValue may be created later inside BeastPowers, listen for it
+                entry.beastChildConn = beast.ChildAdded:Connect(function(child)
+                    if child:IsA("NumberValue") then
+                        task.wait(0.02)
+                        tryConnectNumber()
+                    end
+                end)
+            end
+        else
+            if label then label.Text = "" end
+        end
+    end
+
+    entry.beastAddedConn = character.ChildAdded:Connect(function(child)
+        if child.Name == "BeastPowers" then
+            task.wait(0.04)
+            tryConnectNumber()
+        end
+    end)
+    entry.beastRemovedConn = character.ChildRemoved:Connect(function(child)
+        if child.Name == "BeastPowers" then
+            if entry.numberConn then entry.numberConn:Disconnect() entry.numberConn = nil end
+            if entry.beastChildConn then entry.beastChildConn:Disconnect() entry.beastChildConn = nil end
+            local label = createBillboardLabel(player)
+            if label then label.Text = "" end
+        end
+    end)
+
+    tryConnectNumber()
 end
 
--- Tenta conectar a um BeastPowerLabel no HumanoidRootPart do jogador e espelhar seu Text no bottom.
--- Retorna true se conectou a label (ou já havia uma), false caso contrário.
-local function ConnectLocalHeadLabelIfExists()
-	-- limpa listeners anteriores da label (não limpa NV)
-	if headLabelConn then headLabelConn:Disconnect() headLabelConn = nil end
-	if headLabelAncestryConn then headLabelAncestryConn:Disconnect() headLabelAncestryConn = nil end
-	if headBillboardConn then headBillboardConn:Disconnect() headBillboardConn = nil end
-	headLabelAttached = false
-
-	local char = LocalPlayer.Character
-	if not char then return false end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then
-		hrp = char:WaitForChild("HumanoidRootPart", 5)
-		if not hrp then return false end
-	end
-
-	local function attachToLabel(lbl)
-		if not lbl then return end
-		-- mark attached
-		headLabelAttached = true
-		bottomContainer.Visible = true
-		bottomValue.Text = lbl.Text or "0%"
-
-		-- listen text changes on the head label
-		headLabelConn = lbl:GetPropertyChangedSignal("Text"):Connect(function()
-			if lbl.Parent then
-				bottomValue.Text = lbl.Text
-			end
-		end)
-		-- detect removal of the label (fallback to NV then)
-		headLabelAncestryConn = lbl.AncestryChanged:Connect(function()
-			-- if label is removed from the tree, fallback to NV
-			if not lbl:IsDescendantOf(game) or not lbl.Parent then
-				headLabelAttached = false
-				if headLabelConn then headLabelConn:Disconnect() headLabelConn = nil end
-				if headLabelAncestryConn then headLabelAncestryConn:Disconnect() headLabelAncestryConn = nil end
-				-- Reconnect NV reactive to update bottom immediately
-				ConnectLocalNVReactive()
-			end
-		end)
-	end
-
-	-- If billboard and label already exist, attach immediately
-	local bb = hrp:FindFirstChild("BeastPowerBillboard")
-	if bb then
-		local lbl = bb:FindFirstChild("BeastPowerLabel")
-		if lbl then
-			attachToLabel(lbl)
-			return true
-		end
-	end
-
-	-- otherwise, listen for a billboard being added
-	headBillboardConn = hrp.ChildAdded:Connect(function(child)
-		if child.Name == "BeastPowerBillboard" and child:IsA("BillboardGui") then
-			task.wait(0.02)
-			local newLbl = child:FindFirstChild("BeastPowerLabel")
-			if newLbl then
-				attachToLabel(newLbl)
-			end
-			if headBillboardConn then headBillboardConn:Disconnect() headBillboardConn = nil end
-		end
-	end)
-
-	return false
+local function attachPlayerListeners()
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl ~= LocalPlayer then
+            state.perPlayer[pl] = state.perPlayer[pl] or {}
+            if state.perPlayer[pl].charConn then
+                state.perPlayer[pl].charConn:Disconnect()
+                state.perPlayer[pl].charConn = nil
+            end
+            state.perPlayer[pl].charConn = pl.CharacterAdded:Connect(function(char)
+                task.wait(0.35)
+                createBillboardLabel(pl)
+                connectReactiveForCharacter(pl, char)
+            end)
+            -- initial if already spawned
+            if pl.Character then
+                createBillboardLabel(pl)
+                connectReactiveForCharacter(pl, pl.Character)
+            end
+        end
+    end
 end
 
--- Conecta NumberValue do local PLAYER reativamente, para bottomValue ser instantâneo
--- Nota: NV atualiza o bottom APENAS se não houver BeastPowerLabel local anexado (headLabelAttached == false).
-function ConnectLocalNVReactive()
-	-- limpa anteriores NV listeners
-	if localNVConn then localNVConn:Disconnect() localNVConn = nil end
-	if localBeastChildConn then localBeastChildConn:Disconnect() localBeastChildConn = nil end
+local function cleanupAll()
+    for pl, entry in pairs(state.perPlayer) do
+        if entry.charConn then entry.charConn:Disconnect() end
+        if entry.beastAddedConn then entry.beastAddedConn:Disconnect() end
+        if entry.beastRemovedConn then entry.beastRemovedConn:Disconnect() end
+        if entry.beastChildConn then entry.beastChildConn:Disconnect() end
+        if entry.numberConn then entry.numberConn:Disconnect() end
+        state.perPlayer[pl] = nil
+    end
+    if state.playersConn then state.playersConn:Disconnect() state.playersConn = nil end
 
-	local char = LocalPlayer.Character
-	if not char then
-		-- aguarda spawn
-		bottomContainer.Visible = true
-		bottomValue.Text = "0%"
-		return
-	end
-
-	-- First try to attach to head label; if succeeds, bottom will mirror label
-	if ConnectLocalHeadLabelIfExists() then
-		-- We still keep NV listeners but NV won't override bottom while label attached
-		-- so continue to setup NV in background as fallback
-	end
-
-	local beast = char:FindFirstChild("BeastPowers")
-	if not beast then
-		-- aguarda criação de BeastPowers
-		bottomContainer.Visible = true
-		-- only show 0% if no head label attached
-		if not headLabelAttached then bottomValue.Text = "0%" end
-		localBeastChildConn = char.ChildAdded:Connect(function(child)
-			if child.Name == "BeastPowers" then
-				task.wait(0.02)
-				ConnectLocalNVReactive()
-			end
-		end)
-		return
-	end
-
-	local nv = beast:FindFirstChildOfClass("NumberValue")
-	if not nv then
-		-- aguarda NumberValue dentro de BeastPowers
-		bottomContainer.Visible = true
-		if not headLabelAttached then bottomValue.Text = "0%" end
-		localBeastChildConn = beast.ChildAdded:Connect(function(child)
-			if child:IsA("NumberValue") then
-				task.wait(0.02)
-				ConnectLocalNVReactive()
-			end
-		end)
-		return
-	end
-
-	-- Achou NumberValue: se não houver label anexado, atualiza e conecta Changed
-	bottomContainer.Visible = true
-	if not headLabelAttached then
-		UpdateLocalBottomFromNV(nv)
-	end
-
-	localNVConn = nv.Changed:Connect(function()
-		-- If a head label was attached meanwhile, skip NV updates
-		if headLabelAttached then
-			return
-		end
-		if nv.Parent then
-			UpdateLocalBottomFromNV(nv)
-		else
-			bottomValue.Text = "0%"
-		end
-	end)
+    -- destroy billboards
+    for _, pl in ipairs(Players:GetPlayers()) do
+        if pl.Character then destroyBillboardFromCharacter(pl.Character) end
+    end
 end
 
-local function CleanupLocalReactive()
-	if localNVConn then localNVConn:Disconnect() localNVConn = nil end
-	if localBeastChildConn then localBeastChildConn:Disconnect() localBeastChildConn = nil end
-	if headLabelConn then headLabelConn:Disconnect() headLabelConn = nil end
-	if headLabelAncestryConn then headLabelAncestryConn:Disconnect() headLabelAncestryConn = nil end
-	if headBillboardConn then headBillboardConn:Disconnect() headBillboardConn = nil end
-	headLabelAttached = false
+local function enableRunner()
+    if runnerEnabled then return end
+    runnerEnabled = true
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(0,160,90)
+    toggleBtn.Text = "ON"
+
+    attachPlayerListeners()
+    state.playersConn = Players.PlayerAdded:Connect(function(pl)
+        task.wait(0.25)
+        if pl ~= LocalPlayer then
+            state.perPlayer[pl] = state.perPlayer[pl] or {}
+            state.perPlayer[pl].charConn = pl.CharacterAdded:Connect(function(c)
+                task.wait(0.35)
+                createBillboardLabel(pl)
+                connectReactiveForCharacter(pl, c)
+            end)
+            if pl.Character then
+                createBillboardLabel(pl)
+                connectReactiveForCharacter(pl, pl.Character)
+            end
+        end
+    end)
 end
 
--- Conecta respawn de players para criar billboards (mas só quando runnerEnabled)
-local function AttachPlayerReactive(pl)
-	-- limpa conexões antigas
-	if perPlayerConns[pl] then
-		if perPlayerConns[pl].charConn then perPlayerConns[pl].charConn:Disconnect() end
-		if perPlayerConns[pl].nvConn then perPlayerConns[pl].nvConn:Disconnect() end
-		perPlayerConns[pl] = nil
-	end
-
-	perPlayerConns[pl] = {}
-
-	-- Função para tentar criar billboard e conectar NumberValue do player (quando existir)
-	local function tryConnectForCharacter(char)
-		if not char then return end
-		local hrp = char:FindFirstChild("HumanoidRootPart") or char:WaitForChild("HumanoidRootPart", 5)
-		if not hrp then return end
-
-		-- cria billboard se não existir
-		local bb, txt = createBillboardForHRP(hrp)
-		perPlayerConns[pl].billboard = bb
-
-		-- acha NumberValue dentro de BeastPowers (reativo)
-		local beast = char:FindFirstChild("BeastPowers")
-		if not beast then
-			-- aguarda criação de BeastPowers
-			perPlayerConns[pl].nvConn = char.ChildAdded:Connect(function(child)
-				if child.Name == "BeastPowers" then
-					task.wait(0.02)
-					if perPlayerConns[pl] and perPlayerConns[pl].nvConn then
-						perPlayerConns[pl].nvConn:Disconnect()
-						perPlayerConns[pl].nvConn = nil
-					end
-					tryConnectForCharacter(char)
-				end
-			end)
-			return
-		end
-
-		local nv = beast:FindFirstChildOfClass("NumberValue")
-		if not nv then
-			-- aguarda NumberValue dentro de BeastPowers
-			perPlayerConns[pl].nvConn = beast.ChildAdded:Connect(function(child)
-				if child:IsA("NumberValue") then
-					task.wait(0.02)
-					if perPlayerConns[pl] and perPlayerConns[pl].nvConn then
-						perPlayerConns[pl].nvConn:Disconnect()
-						perPlayerConns[pl].nvConn = nil
-					end
-					tryConnectForCharacter(char)
-				end
-			end)
-			return
-		end
-
-		-- conectado a um NumberValue: atualiza e conecta Changed
-		updateLabelFromNumberLabel(txt, nv)
-		perPlayerConns[pl].nvConn = nv.Changed:Connect(function()
-			if nv.Parent then
-				updateLabelFromNumberLabel(txt, nv)
-			else
-				if txt then txt.Text = "" end
-			end
-		end)
-	end
-
-	-- Conecta CharacterAdded para re-criar comportamentos quando respawnar
-	perPlayerConns[pl].charConn = pl.CharacterAdded:Connect(function(char)
-		-- espera partes existirem
-		task.wait(0.35)
-		if runnerEnabled then
-			tryConnectForCharacter(char)
-		end
-	end)
-
-	-- Se já estiver com Character e runner enabled, tenta conectar agora
-	if pl.Character and runnerEnabled then
-		task.spawn(function()
-			task.wait(0.35)
-			tryConnectForCharacter(pl.Character)
-		end)
-	end
+local function disableRunner()
+    if not runnerEnabled then return end
+    runnerEnabled = false
+    toggleBtn.BackgroundColor3 = Color3.fromRGB(170,0,0)
+    toggleBtn.Text = "OFF"
+    cleanupAll()
 end
 
--- Enable runner (liga conexões reativas e cria billboards para players existentes)
-local function EnableRunner()
-	if runnerEnabled then return end
-	runnerEnabled = true
-	toggleBtn.BackgroundColor3 = Color3.fromRGB(0,160,90)
-	toggleBtn.Text = "ON"
-	bottomContainer.Visible = true
-
-	-- criar billboards e conectar reativamente para existentes
-	for _, pl in ipairs(Players:GetPlayers()) do
-		if pl ~= LocalPlayer then
-			AttachPlayerReactive(pl)
-		end
-	end
-
-	-- novo player
-	if not playersAddedConn then
-		playersAddedConn = Players.PlayerAdded:Connect(function(pl)
-			if pl ~= LocalPlayer then
-				AttachPlayerReactive(pl)
-			end
-		end)
-	end
-
-	-- Reactive local NV/head label for instant bottom update
-	ConnectLocalNVReactive()
-end
-
--- Disable runner (limpa tudo)
-local function DisableRunner()
-	if not runnerEnabled then return end
-	runnerEnabled = false
-	toggleBtn.BackgroundColor3 = Color3.fromRGB(180,0,0)
-	toggleBtn.Text = "OFF"
-	bottomContainer.Visible = false
-
-	-- disconnect player added
-	if playersAddedConn then
-		playersAddedConn:Disconnect()
-		playersAddedConn = nil
-	end
-
-	-- limpar todas as conexões de players e destruir billboards em uma passada segura
-	local keys = {}
-	for pl in pairs(perPlayerConns) do table.insert(keys, pl) end
-	for _, pl in ipairs(keys) do
-		local tab = perPlayerConns[pl]
-		if tab then
-			if tab.charConn then tab.charConn:Disconnect() end
-			if tab.nvConn then tab.nvConn:Disconnect() end
-			if tab.billboard and tab.billboard.Parent then
-				tab.billboard:Destroy()
-			end
-		end
-		perPlayerConns[pl] = nil
-	end
-
-	-- local reactive cleanup
-	CleanupLocalReactive()
-end
-
--- Wire UI events
 toggleBtn.MouseButton1Click:Connect(function()
-	if runnerEnabled then DisableRunner() else EnableRunner() end
+    if runnerEnabled then disableRunner() else enableRunner() end
 end)
 
 -- Toggle menu with L
 local menuVisible = false
 UserInputService.InputBegan:Connect(function(input, gp)
-	if gp then return end
-	if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.L then
-		menuVisible = not menuVisible
-		if menuVisible then
-			menu.Visible = true
-			tween(menu, {Position = UDim2.new(0.5, 0, 0.45, 0)}, TweenInfo.new(0.12))
-		else
-			tween(menu, {Position = UDim2.new(0.5, 0, 0.35, 0)}, TweenInfo.new(0.12))
-			task.delay(0.12, function() if menu then menu.Visible = false end end)
-		end
-	end
+    if gp then return end
+    if input.UserInputType == Enum.UserInputType.Keyboard and input.KeyCode == Enum.KeyCode.L then
+        menuVisible = not menuVisible
+        if menuVisible then
+            menu.Visible = true
+            menu.Position = UDim2.new(0.5, 0, 0.35, 0)
+            menu.BackgroundTransparency = 1
+            tween(menu, {Position = UDim2.new(0.5, 0, 0.45, 0), BackgroundTransparency = 0}, TweenInfo.new(0.18))
+        else
+            tween(menu, {Position = UDim2.new(0.5, 0, 0.38, 0), BackgroundTransparency = 1}, TweenInfo.new(0.14))
+            task.delay(0.14, function() if menu then menu.Visible = false end end)
+        end
+    end
 end)
 
--- Reconnect local reactive on respawn while runner is enabled
-LocalPlayer.CharacterAdded:Connect(function()
-	task.wait(0.12)
-	if runnerEnabled then
-		ConnectLocalNVReactive()
-	end
+-- Hint animation (small and minimal) - ensures text appears
+task.spawn(function()
+    task.wait(0.12)
+    hint.Position = UDim2.new(0.5, 0, 1, 12)
+    hint.BackgroundTransparency = 1
+    tween(hint, {Position = UDim2.new(0.5, 0, 1, -18), BackgroundTransparency = 0}, TweenInfo.new(0.18))
+    task.wait(5)
+    tween(hint, {Position = UDim2.new(0.5, 0, 1, 28), BackgroundTransparency = 1}, TweenInfo.new(0.16))
+    task.delay(0.16, function() if hint and hint.Parent then hint:Destroy() end end)
 end)
 
--- Cleanup when player leaves
+-- Cleanup on player leaving
 Players.PlayerRemoving:Connect(function(pl)
-	-- disconnect any stored connections for this player
-	local tab = perPlayerConns[pl]
-	if tab then
-		if tab.charConn then tab.charConn:Disconnect() end
-		if tab.nvConn then tab.nvConn:Disconnect() end
-		if tab.billboard and tab.billboard.Parent then
-			tab.billboard:Destroy()
-		end
-		perPlayerConns[pl] = nil
-	end
+    local e = state.perPlayer[pl]
+    if e then
+        if e.charConn then e.charConn:Disconnect() end
+        if e.beastAddedConn then e.beastAddedConn:Disconnect() end
+        if e.beastRemovedConn then e.beastRemovedConn:Disconnect() end
+        if e.beastChildConn then e.beastChildConn:Disconnect() end
+        if e.numberConn then e.numberConn:Disconnect() end
+        state.perPlayer[pl] = nil
+    end
 end)
-
--- Script ready
